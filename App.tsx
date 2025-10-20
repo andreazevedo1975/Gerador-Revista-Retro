@@ -1,9 +1,16 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Magazine, MagazineStructure, Article, ArticleImage } from './types';
 import * as geminiService from './services/geminiService';
 import MagazineViewer from './components/EbookViewer';
 import LoadingOverlay from './components/LoadingOverlay';
+
+const PixelArtIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 4H6V6H4V4ZM6 6H8V8H6V6ZM8 8H10V10H8V8ZM10 10H12V12H10V10ZM12 12H14V14H12V12ZM14 14H16V16H14V14ZM16 16H18V18H16V16ZM18 18H20V20H18V18ZM4 20H6V18H4V20ZM6 18H8V16H6V18ZM8 16H10V14H8V16ZM10 14H12V12H10V14ZM12 12H14V10H12V12ZM14 10H16V8H14V10ZM16 8H18V6H16V8ZM18 6H20V4H18V6ZM8 4H10V6H8V4ZM10 6H12V8H10V6ZM12 8H14V10H12V8ZM14 6H16V4H14V6ZM16 18H18V20H16V18ZM14 16H16V18H14V16ZM12 14H14V16H12V14ZM10 16H12V14H10V16ZM8 18H10V16H8V18ZM6 20H8V18H6V20Z"/>
+    </svg>
+);
+
 
 const App: React.FC = () => {
     const [idea, setIdea] = useState('');
@@ -12,6 +19,15 @@ const App: React.FC = () => {
     const [loadingMessages, setLoadingMessages] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [isGeneratingImage, setIsGeneratingImage] = useState<Record<string, boolean>>({});
+    const [isPixelArtTheme, setIsPixelArtTheme] = useState(false);
+
+    useEffect(() => {
+        if (isPixelArtTheme) {
+            document.body.classList.add('pixel-art-theme');
+        } else {
+            document.body.classList.remove('pixel-art-theme');
+        }
+    }, [isPixelArtTheme]);
 
     const addLoadingMessage = (message: string) => {
         setLoadingMessages(prev => [...prev, message]);
@@ -160,6 +176,13 @@ const App: React.FC = () => {
             <header className="bg-gray-800/50 backdrop-blur-sm shadow-lg border-b border-fuchsia-500/30 p-4 sticky top-0 z-20">
                 <div className="container mx-auto flex justify-between items-center">
                     <h1 className="text-xl md:text-2xl font-display text-cyan-300">Revista Retrô Gamer AI</h1>
+                    <button
+                        onClick={() => setIsPixelArtTheme(prev => !prev)}
+                        className="p-2 rounded-md hover:bg-fuchsia-500/50 transition-colors"
+                        title={isPixelArtTheme ? "Desativar Tema Pixel" : "Ativar Tema Pixel"}
+                    >
+                        <PixelArtIcon className="w-6 h-6 text-yellow-300" />
+                    </button>
                 </div>
             </header>
             <main className="container mx-auto p-4 md:p-8">

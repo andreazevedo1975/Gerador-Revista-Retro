@@ -80,8 +80,8 @@ const ReadingMode: React.FC<ReadingModeProps> = ({ article, onClose }) => {
     const decreaseFontSize = () => setFontSizeIndex(prev => Math.max(prev - 1, 0));
 
     const themeClasses = theme === 'dark' 
-        ? 'bg-gray-900 text-gray-200' 
-        : 'bg-gray-100 text-gray-800';
+        ? 'bg-gray-900 text-gray-200 theme-dark' 
+        : 'bg-gray-100 text-gray-800 theme-light';
     
     const contentFontSizeClass = fontSizes[fontSizeIndex];
 
@@ -89,7 +89,7 @@ const ReadingMode: React.FC<ReadingModeProps> = ({ article, onClose }) => {
     const buttonClasses = `p-2 rounded-full transition-colors ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-300'}`;
 
     return (
-        <div className={`fixed inset-0 z-50 p-4 sm:p-8 overflow-y-auto transition-colors duration-300 ${themeClasses}`}>
+        <div className={`fixed inset-0 z-50 p-4 sm:p-8 overflow-y-auto transition-colors duration-300 ${themeClasses} reading-mode-container`}>
             <div className="max-w-3xl mx-auto">
                 <div className={`flex justify-between items-center mb-8 sticky top-0 py-4 backdrop-blur-sm ${toolbarBg}`}>
                     <div className="flex items-center gap-2">
