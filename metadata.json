@@ -1,0 +1,5 @@
+{
+  "name": "Revista Retrô Gamer AI",
+  "description": "Uma aplicação que gera uma revista online sobre jogos retrô (SNES, Mega Drive, NES, Master System) com artigos, dicas e imagens, tudo a partir de um único tópico.",
+  "requestFramePermissions": []
+}
