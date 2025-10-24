@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 interface RegenerateImageButtonProps {
     imageId: string;
-    onRegenerate: (id: string) => void;
+    onRegenerate: (id: string, options: { quality: 'standard' | 'high'; modificationPrompt?: string }) => void;
     isLoading: boolean;
 }
 
@@ -20,25 +20,78 @@ const SpinnerIcon: React.FC<{className?: string}> = ({ className }) => (
 );
 
 const RegenerateImageButton: React.FC<RegenerateImageButtonProps> = ({ imageId, onRegenerate, isLoading }) => {
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const [modificationPrompt, setModificationPrompt] = useState('');
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    // Close menu on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+                setIsPanelOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [wrapperRef]);
+
+    const handleRegenerate = (quality: 'standard' | 'high') => {
+        setIsPanelOpen(false);
+        onRegenerate(imageId, { quality, modificationPrompt });
+        setModificationPrompt(''); // Reset prompt after use
+    };
+
     return (
         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-60 transition-all duration-300 flex justify-center items-center">
-            <button
-                onClick={() => onRegenerate(imageId)}
-                disabled={isLoading}
-                className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-fuchsia-600 text-white font-bold py-2 px-4 rounded-md shadow-lg flex items-center space-x-2 disabled:cursor-wait hover:bg-fuchsia-700 font-display text-sm"
-            >
-                {isLoading ? (
-                    <>
-                        <SpinnerIcon className="w-5 h-5" />
-                        <span>Gerando...</span>
-                    </>
-                ) : (
-                    <>
+            {isLoading ? (
+                 <div className="bg-fuchsia-600/80 text-white font-bold py-2 px-4 rounded-md shadow-lg flex items-center space-x-2 font-display text-sm backdrop-blur-sm">
+                    <SpinnerIcon className="w-5 h-5" />
+                    <span>Gerando...</span>
+                 </div>
+            ) : (
+                <div ref={wrapperRef} className="relative opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <button
+                        onClick={() => setIsPanelOpen(prev => !prev)}
+                        className="bg-fuchsia-600 text-white font-bold py-2 px-4 rounded-md shadow-lg flex items-center space-x-2 hover:bg-fuchsia-700 font-display text-sm"
+                    >
                         <RegenerateIcon className="w-5 h-5" />
                         <span>Nova Imagem</span>
-                    </>
-                )}
-            </button>
+                    </button>
+                    {isPanelOpen && (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-gray-800 rounded-lg shadow-xl border border-fuchsia-500/50 z-10 p-4 space-y-3">
+                           <div>
+                                <label htmlFor={`mod-prompt-${imageId}`} className="block text-sm font-bold text-gray-300 mb-1">
+                                   Instruções para IA
+                                </label>
+                                <textarea
+                                    id={`mod-prompt-${imageId}`}
+                                    value={modificationPrompt}
+                                    onChange={(e) => setModificationPrompt(e.target.value)}
+                                    placeholder="Ex: adicione uma armadura vermelha..."
+                                    className="w-full h-16 p-2 border border-cyan-500/50 bg-gray-900 text-gray-200 rounded-md text-sm focus:ring-1 focus:ring-cyan-400 focus:border-cyan-400"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Deixe em branco para uma variação criativa.</p>
+                           </div>
+                           <div className="flex gap-2">
+                                <button
+                                    onClick={() => handleRegenerate('standard')}
+                                    className="flex-1 text-center px-3 py-2 text-sm text-gray-200 bg-gray-700 hover:bg-fuchsia-600 rounded-md transition-colors"
+                                >
+                                    <span className="font-bold">Padrão</span>
+                                </button>
+                                <button
+                                    onClick={() => handleRegenerate('high')}
+                                    className="flex-1 text-center px-3 py-2 text-sm text-gray-200 bg-gray-700 hover:bg-fuchsia-600 rounded-md transition-colors"
+                                >
+                                    <span className="font-bold">Alta Qualidade</span>
+                                </button>
+                           </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

@@ -1,4 +1,6 @@
 export type ImageType = 'logo' | 'gameplay' | 'artwork';
+export type GenerationState = 'pending' | 'generating' | 'done' | 'error';
+export type CreationType = 'console' | 'game' | 'guide' | 'developer' | 'rivalry' | 'soundtrack';
 
 export interface ArticleImagePrompt {
     type: ImageType;
@@ -37,28 +39,4 @@ export interface Magazine {
     coverImage: string; // base64 image data
     coverImagePrompt: string;
     articles: Article[];
-}
-
-// FIX: Define and export Ebook, Chapter, Page, and PageContent types to resolve import errors.
-export interface Chapter {
-    id: string;
-    title: string;
-    content: string;
-    image: string;
-}
-
-export interface Ebook {
-    title: string;
-    coverImage: string;
-    chapters: Chapter[];
-}
-
-export type PageContent =
-    | { type: 'cover'; title: string; image: string; }
-    | { type: 'chapterHeader'; title: string; image: string; chapterId: string; }
-    | { type: 'textBlock'; content: string; path: string; };
-
-export interface Page {
-    id: string;
-    items: PageContent[];
 }

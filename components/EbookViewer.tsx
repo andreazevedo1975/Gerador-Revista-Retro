@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Magazine, Article, ArticleImage } from '../types';
 import EditableText from './EditableText';
 import RegenerateImageButton from './RegenerateImageButton';
@@ -9,7 +8,7 @@ import ReadingMode from './ReadingMode'; // Import the new component
 interface MagazineViewerProps {
     magazine: Magazine;
     onTextUpdate: (path: string, newText: string) => void;
-    onImageRegenerate: (path: string) => void;
+    onImageRegenerate: (path: string, options: { quality: 'standard' | 'high'; modificationPrompt?: string; }) => void;
     isGeneratingImage: Record<string, boolean>;
 }
 
@@ -81,7 +80,7 @@ const renderMarkdown = (markdown: string) => {
 
 const ImageGallery: React.FC<{
     images: ArticleImage[];
-    onRegenerate: (path: string) => void;
+    onRegenerate: (path: string, options: { quality: 'standard' | 'high'; modificationPrompt?: string; }) => void;
     isGeneratingImage: Record<string, boolean>;
 }> = ({ images, onRegenerate, isGeneratingImage }) => {
     const gameplay = images.find(img => img.type === 'gameplay');
@@ -118,10 +117,95 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' 
     </svg>
 );
 
+const ChevronUpIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+    </svg>
+);
+
+const ChevronDownIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+    </svg>
+);
+
 
 const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate, onImageRegenerate, isGeneratingImage }) => {
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
     const [readingArticle, setReadingArticle] = useState<Article | null>(null);
+    const [currentArticleIndex, setCurrentArticleIndex] = useState(0);
+    const [isNavOpen, setIsNavOpen] = useState(false);
+    const articleRefs = useRef<(HTMLElement | null)[]>([]);
+    const navFooterRef = useRef<HTMLElement>(null);
+
+    useEffect(() => {
+        if (!isNavOpen) return;
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (navFooterRef.current && !navFooterRef.current.contains(event.target as Node)) {
+                setIsNavOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isNavOpen]);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const visibleEntry = entries.find(entry => entry.isIntersecting);
+                if (visibleEntry) {
+                    const index = magazine.articles.findIndex(
+                        (article) => article.id === visibleEntry.target.id
+                    );
+                    if (index !== -1) {
+                        setCurrentArticleIndex(index);
+                    }
+                }
+            },
+            {
+                root: null,
+                rootMargin: '0px 0px -50% 0px', // Trigger when article is in the top half of the screen
+                threshold: 0,
+            }
+        );
+
+        const currentArticleRefs = articleRefs.current;
+        currentArticleRefs.forEach((ref) => {
+            if (ref) observer.observe(ref);
+        });
+
+        return () => {
+            currentArticleRefs.forEach((ref) => {
+                if (ref) observer.unobserve(ref);
+            });
+        };
+    }, [magazine.articles]);
+
+    const scrollToArticle = (index: number) => {
+        if (articleRefs.current[index]) {
+            articleRefs.current[index]?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+            });
+            setCurrentArticleIndex(index);
+        }
+    };
+
+    const handlePrevArticle = () => {
+        if (currentArticleIndex > 0) {
+            scrollToArticle(currentArticleIndex - 1);
+        }
+    };
+
+    const handleNextArticle = () => {
+        if (currentArticleIndex < magazine.articles.length - 1) {
+            scrollToArticle(currentArticleIndex + 1);
+        }
+    };
     
     const handleDownloadPdf = async () => {
         setIsDownloadingPdf(true);
@@ -420,7 +504,13 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                     {magazine.articles.map((article, index) => {
                         const articlePath = `articles.${index}`;
                         return (
-                            <section key={article.id}>
+                            <section
+                                key={article.id}
+                                id={article.id}
+                                ref={(el) => {
+                                    articleRefs.current[index] = el;
+                                }}
+                            >
                                 <div className="flex justify-between items-start gap-4 mb-6">
                                     <EditableText
                                         tag="h2"
@@ -476,6 +566,60 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                     })}
                 </div>
             </article>
+
+            <footer ref={navFooterRef} className="sticky bottom-0 z-30 mt-8">
+                 {isNavOpen && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-full max-w-lg mb-2">
+                        <div className="bg-gray-800 border-2 border-fuchsia-500/50 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                            <ul className="p-2 space-y-1">
+                                {magazine.articles.map((article, index) => (
+                                    <li key={article.id}>
+                                        <button
+                                            onClick={() => {
+                                                scrollToArticle(index);
+                                                setIsNavOpen(false);
+                                            }}
+                                            className={`w-full text-left p-2 rounded-md font-display text-sm transition-colors duration-200 truncate ${
+                                                currentArticleIndex === index
+                                                    ? 'bg-fuchsia-600 text-white'
+                                                    : 'text-gray-300 hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            <span className="font-sans font-bold">{index + 1}.</span> {article.title}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+                <div className="bg-gray-900/80 backdrop-blur-sm border-t border-fuchsia-500/30 p-3">
+                    <div className="container mx-auto flex justify-between items-center max-w-4xl">
+                        <button
+                            onClick={handlePrevArticle}
+                            disabled={currentArticleIndex === 0}
+                            className="bg-fuchsia-600 text-white font-bold py-2 px-6 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
+                        >
+                            Anterior
+                        </button>
+                        <button
+                            onClick={() => setIsNavOpen(prev => !prev)}
+                            className="font-display text-yellow-300 text-sm text-center flex flex-col items-center gap-1 hover:bg-fuchsia-500/20 px-4 py-1 rounded-md transition-colors"
+                            title="Navegar para artigo"
+                        >
+                            {isNavOpen ? <ChevronDownIcon /> : <ChevronUpIcon />}
+                            <span>Artigo {currentArticleIndex + 1} de {magazine.articles.length}</span>
+                        </button>
+                        <button
+                            onClick={handleNextArticle}
+                            disabled={currentArticleIndex === magazine.articles.length - 1}
+                            className="bg-fuchsia-600 text-white font-bold py-2 px-6 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
+                        >
+                            Próximo
+                        </button>
+                    </div>
+                </div>
+            </footer>
         </div>
     );
 };

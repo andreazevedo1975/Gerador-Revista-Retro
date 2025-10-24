@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { MagazineStructure, ImageType } from '../types';
 
@@ -131,14 +130,33 @@ const getAspectRatioForType = (type: ImageType): '3:4' | '16:9' => {
     }
 };
 
-export async function generateImage(prompt: string, type: ImageType | 'cover', quality: 'standard' | 'high' = 'standard'): Promise<string> {
+interface GenerateImageOptions {
+    prompt: string;
+    type: ImageType | 'cover';
+    quality?: 'standard' | 'high';
+    modificationPrompt?: string;
+}
+
+export async function generateImage({
+    prompt,
+    type,
+    quality = 'standard',
+    modificationPrompt = ''
+}: GenerateImageOptions): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const aspectRatio = type === 'cover' ? '3:4' : getAspectRatioForType(type);
     
     let finalPrompt = prompt;
+    
+    if (modificationPrompt.trim()) {
+        finalPrompt = `Based on the idea "${prompt}", generate a new 16-bit pixel art image with the following modification: "${modificationPrompt}". Maintain the original style.`;
+    } else {
+        // If no modification is given, ask for a variation to avoid identical images.
+        finalPrompt = `Generate a new creative variation of this 16-bit pixel art image concept: "${prompt}".`;
+    }
+    
     if (quality === 'high') {
-        // Adiciona modificadores para solicitar uma imagem de maior qualidade, mantendo o estilo
         finalPrompt += ", masterpiece, ultra detailed, high fidelity pixel art, best quality, cinematic lighting";
     }
     
