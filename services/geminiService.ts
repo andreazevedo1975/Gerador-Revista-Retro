@@ -57,10 +57,12 @@ const structureSchema = {
     required: ["title", "coverImagePrompt", "articles"],
 };
 
-export async function generateMagazineStructure(idea: string): Promise<MagazineStructure> {
+export async function generateMagazineStructure(idea: string, isDeepMode: boolean): Promise<MagazineStructure> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    const prompt = `
+    const modelName = isDeepMode ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+
+    let prompt = `
         Você é um editor de uma revista de videogames retrô dos anos 90 chamada "Retrô Gamer AI".
         Crie a estrutura para uma nova edição da revista com base na seguinte pauta: "${idea}".
         A revista deve ter um tom divertido, informativo e nostálgico e ter entre 3 e 5 artigos.
@@ -80,8 +82,12 @@ export async function generateMagazineStructure(idea: string): Promise<MagazineS
         O resultado deve ser um objeto JSON bem formatado.
     `;
 
+    if (isDeepMode) {
+        prompt += `\nMODO PROFUNDO ATIVADO: A pauta deve ser abordada com profundidade máxima, oferecendo insights únicos e uma análise crítica e detalhada. O nível de escrita deve ser profissional e aprofundado, e os prompts gerados devem refletir essa complexidade.`;
+    }
+
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: modelName,
         contents: prompt,
         config: {
             responseMimeType: "application/json",
@@ -118,10 +124,12 @@ export async function generateText(prompt: string): Promise<string> {
     return response.text;
 }
 
-const getAspectRatioForType = (type: ImageType): '3:4' | '16:9' => {
+const getAspectRatioForType = (type: ImageType): '3:4' | '16:9' | '1:1' => {
     switch (type) {
         case 'artwork':
             return '3:4'; // Box art style
+        case 'icon':
+            return '1:1'; // Square for icons
         case 'logo':
         case 'gameplay':
             return '16:9'; // Widescreen for logos and gameplay
@@ -145,14 +153,14 @@ export async function generateImage({
 }: GenerateImageOptions): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    const aspectRatio = type === 'cover' ? '3:4' : getAspectRatioForType(type);
+    const aspectRatio = type === 'cover' ? '3:4' : getAspectRatioForType(type as ImageType);
     
     let finalPrompt = prompt;
     
     if (modificationPrompt.trim()) {
         finalPrompt = `Based on the idea "${prompt}", generate a new 16-bit pixel art image with the following modification: "${modificationPrompt}". Maintain the original style.`;
-    } else {
-        // If no modification is given, ask for a variation to avoid identical images.
+    } else if (type !== 'icon') {
+        // If no modification is given, ask for a variation to avoid identical images, but not for icons.
         finalPrompt = `Generate a new creative variation of this 16-bit pixel art image concept: "${prompt}".`;
     }
     

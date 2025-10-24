@@ -24,7 +24,7 @@ const App: React.FC = () => {
         setLoadingMessages(prev => [...prev, message]);
     };
 
-    const handleGenerateStructure = async (topic: string, generationType: CreationType) => {
+    const handleGenerateStructure = async (topic: string, generationType: CreationType, isDeepMode: boolean) => {
         if (!topic.trim()) return;
 
         setIsLoading(true);
@@ -34,8 +34,8 @@ const App: React.FC = () => {
         setLoadingMessages([]);
         
         try {
-            addLoadingMessage('Consultando os anais dos games...');
-            const structure = await geminiService.generateMagazineStructure(topic);
+            addLoadingMessage(isDeepMode ? 'Acessando arquivos secretos da Warp Zone...' : 'Consultando os anais dos games...');
+            const structure = await geminiService.generateMagazineStructure(topic, isDeepMode);
             
             setMagazineStructure(structure);
 
@@ -141,7 +141,7 @@ const App: React.FC = () => {
         });
     }, [magazine, magazineStructure, handleGenerateCover, handleGenerateArticle]);
     
-    const handleGenerate = (topic: string, type: CreationType) => {
+    const handleGenerate = (topic: string, type: CreationType, isDeepMode: boolean) => {
         let prompt = '';
         switch(type) {
             case 'console':
@@ -163,7 +163,7 @@ const App: React.FC = () => {
                 prompt = `Crie uma revista sobre a música e o som dos games, com foco em ${topic}. Analise as composições, a tecnologia de som da época e o impacto emocional das trilhas sonoras.`;
                 break;
         }
-        handleGenerateStructure(prompt, type);
+        handleGenerateStructure(prompt, type, isDeepMode);
     };
 
     const handleSelectCreationType = (type: CreationType) => {

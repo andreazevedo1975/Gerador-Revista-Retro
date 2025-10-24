@@ -1,4 +1,4 @@
-export type ImageType = 'logo' | 'gameplay' | 'artwork';
+export type ImageType = 'logo' | 'gameplay' | 'artwork' | 'icon';
 export type GenerationState = 'pending' | 'generating' | 'done' | 'error';
 export type CreationType = 'console' | 'game' | 'guide' | 'developer' | 'rivalry' | 'soundtrack';
 
