@@ -3,7 +3,7 @@ import { Magazine, Article, ArticleImage } from '../types';
 import EditableText from './EditableText';
 import RegenerateImageButton from './RegenerateImageButton';
 import Comments from './Comments';
-import ReadingMode from './ReadingMode'; // Import the new component
+import ReadingMode from './ReadingMode';
 
 interface MagazineViewerProps {
     magazine: Magazine;
@@ -14,6 +14,8 @@ interface MagazineViewerProps {
 
 declare const jspdf: any;
 declare const html2canvas: any;
+declare const htmlDocx: any;
+declare const saveAs: any;
 
 const renderMarkdown = (markdown: string) => {
     const lines = markdown.split('\n');
@@ -130,10 +132,36 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-
     </svg>
 );
 
+const ShareIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 4.186m0-4.186L10.5 8.354m-3.283 2.553L10.5 15.646m3.283-7.292a2.25 2.25 0 100 4.186m0-4.186L10.5 8.354m3.283 2.553L10.5 15.646m0 0l3.283-2.553m0 0a2.25 2.25 0 100-4.186m0 4.186L10.5 15.646" />
+    </svg>
+);
+
+const TwitterIcon: React.FC = () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+    </svg>
+);
+
+const FacebookIcon: React.FC = () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
+        <path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.326-.043-1.557-.14-2.857-.14C11.928 2 10 3.657 10 6.7v2.8H7v4h3V22h4z"></path>
+    </svg>
+);
+
+const WhatsAppIcon: React.FC = () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
+        <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.38 1.25 4.82l-1.34 4.91 5.04-1.32c1.41.79 3.02 1.26 4.71 1.26h.01c5.46 0 9.91-4.45 9.91-9.91s-4.45-9.91-9.91-9.91zm0 18.23c-1.54 0-3.02-.42-4.32-1.16l-.31-.18-3.21.84.86-3.12-.2-.32c-.82-1.34-1.32-2.88-1.32-4.52 0-4.59 3.73-8.32 8.32-8.32 4.59 0 8.32 3.73 8.32 8.32 0 4.59-3.73 8.32-8.32 8.32zm4.52-6.13c-.25-.12-1.47-.72-1.7-.82s-.39-.12-.56.12c-.17.25-.64.82-.79.98s-.29.17-.54.06c-.25-.12-1.06-.39-2.02-1.25s-1.45-1.95-1.61-2.29c-.17-.34-.02-.51.11-.64s.25-.29.37-.43c.13-.14.17-.25.25-.41s.04-.3-.02-.43c-.06-.12-.56-1.34-.76-1.84s-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31s-.86.84-.86 2.05c0 1.21.88 2.37 1 2.53s1.75 2.67 4.24 3.74c.59.25 1.05.41 1.41.51.6.19 1.14.16 1.56.1.48-.07 1.47-.6 1.68-1.18s.21-1.08.15-1.18c-.07-.1-.22-.16-.47-.28z"></path>
+    </svg>
+);
+
 
 const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate, onImageRegenerate, isGeneratingImage }) => {
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+    const [isDownloadingDocx, setIsDownloadingDocx] = useState(false);
     const [readingArticle, setReadingArticle] = useState<Article | null>(null);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [currentArticleIndex, setCurrentArticleIndex] = useState(0);
     const [isNavOpen, setIsNavOpen] = useState(false);
     const articleRefs = useRef<(HTMLElement | null)[]>([]);
@@ -169,7 +197,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
             },
             {
                 root: null,
-                rootMargin: '0px 0px -50% 0px', // Trigger when article is in the top half of the screen
+                rootMargin: '0px 0px -50% 0px',
                 threshold: 0,
             }
         );
@@ -217,7 +245,6 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
             return;
         }
     
-        // Add a temporary style to hide interactive elements during capture
         const style = document.createElement('style');
         style.innerHTML = `
             #magazine-content .group .absolute {
@@ -231,11 +258,15 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
             const pdf = new jsPDF('p', 'pt', 'a4');
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = pdf.internal.pageSize.getHeight();
+
+            const margin = 40;
+            const contentWidth = pdfWidth - margin * 2;
+            const contentHeight = pdfHeight - margin * 2;
             
             const canvas = await html2canvas(magazineElement, {
-                scale: 2, // Higher scale for better quality
+                scale: 2,
                 useCORS: true,
-                backgroundColor: '#111827', // bg-gray-900
+                backgroundColor: '#111827',
                 logging: false,
                 windowWidth: magazineElement.scrollWidth,
                 windowHeight: magazineElement.scrollHeight,
@@ -243,32 +274,127 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
     
             const imgData = canvas.toDataURL('image/jpeg', 0.95);
             const imgProps = pdf.getImageProperties(imgData);
-            const scaledHeight = (imgProps.height * pdfWidth) / imgProps.width;
             
-            let heightLeft = scaledHeight;
+            const scaledImgHeight = (imgProps.height * contentWidth) / imgProps.width;
+            
+            let heightLeft = scaledImgHeight;
             let position = 0;
     
-            // Add the first page
-            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, scaledHeight, undefined, 'FAST');
-            heightLeft -= pdfHeight;
+            pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, scaledImgHeight, undefined, 'FAST');
+            heightLeft -= contentHeight;
     
-            // Add subsequent pages if needed
             while (heightLeft > 0) {
-                position = heightLeft - scaledHeight;
+                position -= contentHeight;
                 pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, scaledHeight, undefined, 'FAST');
-                heightLeft -= pdfHeight;
+                pdf.addImage(imgData, 'JPEG', margin, position + margin, contentWidth, scaledImgHeight, undefined, 'FAST');
+                heightLeft -= contentHeight;
             }
     
             pdf.save(`${magazine.title.replace(/\s+/g, '_')}.pdf`);
         } catch (error) {
             console.error("Erro ao gerar PDF:", error);
         } finally {
-            // Cleanup
             document.head.removeChild(style);
             setIsDownloadingPdf(false);
         }
     };
+
+    const handleDownloadDocx = async () => {
+        setIsDownloadingDocx(true);
+        try {
+            const markdownToHtml = (markdown: string): string => {
+                const lines = markdown.split('\n');
+                let html = '';
+                let inUl = false;
+                let inOl = false;
+
+                const closeLists = () => {
+                    if (inUl) html += '</ul>';
+                    if (inOl) html += '</ol>';
+                    inUl = false;
+                    inOl = false;
+                };
+                
+                const processLine = (line: string) => line.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+                lines.forEach(line => {
+                    const trimmedLine = line.trim();
+                    const isUl = trimmedLine.startsWith('- ');
+                    const isOl = /^\d+\.\s/.test(trimmedLine);
+
+                    if (trimmedLine.startsWith('### ')) {
+                        closeLists();
+                        html += `<h3>${processLine(trimmedLine.substring(4))}</h3>`;
+                    } else if (isUl) {
+                        if (inOl) closeLists();
+                        if (!inUl) {
+                            html += '<ul>';
+                            inUl = true;
+                        }
+                        html += `<li>${processLine(trimmedLine.substring(2))}</li>`;
+                    } else if (isOl) {
+                        if (inUl) closeLists();
+                        if (!inOl) {
+                            html += '<ol>';
+                            inOl = true;
+                        }
+                        html += `<li>${processLine(trimmedLine.substring(trimmedLine.indexOf(' ') + 1))}</li>`;
+                    } else {
+                        closeLists();
+                        if (trimmedLine !== '') {
+                            html += `<p>${processLine(trimmedLine)}</p>`;
+                        }
+                    }
+                });
+                closeLists();
+                return html;
+            };
+
+            const articlesHtml = magazine.articles.map(article => `
+                <div style="page-break-before: always;">
+                    <h2>${article.title}</h2>
+                    ${article.images.map(img =>
+                        `<p><img src="${img.url}" style="width: 500px; max-width: 100%; height: auto;" alt="${img.type}"></p>`
+                    ).join('')}
+                    ${markdownToHtml(article.content)}
+                    <h3>Dicas e Macetes</h3>
+                    ${markdownToHtml(article.tips)}
+                </div>
+            `).join('');
+
+            const fullHtml = `
+                <!DOCTYPE html>
+                <html lang="pt-BR">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>${magazine.title}</title>
+                </head>
+                <body>
+                    <div style="text-align: center;">
+                        <h1>${magazine.title}</h1>
+                        <p>
+                            <img src="${magazine.coverImage}" style="width: 500px; max-width: 100%; height: auto;" alt="Capa da Revista">
+                        </p>
+                    </div>
+                    ${articlesHtml}
+                </body>
+                </html>
+            `;
+            
+            const docxBlob = await htmlDocx.asBlob(fullHtml, {
+                orientation: 'portrait',
+                margins: { top: 720, bottom: 720, left: 720, right: 720 }
+            });
+
+            saveAs(docxBlob, `${magazine.title.replace(/\s+/g, '_')}.docx`);
+
+        } catch (error) {
+            console.error("Erro ao gerar DOCX:", error);
+        } finally {
+            setIsDownloadingDocx(false);
+        }
+    };
+
 
     const handleDownloadArticle = (article: Article) => {
         const markdownToHtml = (markdown: string): string => {
@@ -377,6 +503,26 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
         URL.revokeObjectURL(url);
     };
 
+    const handleShare = async () => {
+        const shareData = {
+            title: `Revista Retrô Gamer AI: ${magazine.title}`,
+            text: `Confira a revista "${magazine.title}" que eu criei usando a Retrô Gamer AI!`,
+            url: window.location.href,
+        };
+
+        if (navigator.share) {
+            try {
+                await navigator.share(shareData);
+            } catch (error) {
+                console.error('Erro ao compartilhar:', error);
+                // Fallback to modal if user cancels share dialog
+                setIsShareModalOpen(true);
+            }
+        } else {
+            setIsShareModalOpen(true);
+        }
+    };
+    
     return (
         <div className="max-w-4xl mx-auto">
             {readingArticle && (
@@ -385,7 +531,44 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                     onClose={() => setReadingArticle(null)} 
                 />
             )}
-            <div className="flex justify-end mb-6 sticky top-24 z-10">
+
+            {isShareModalOpen && (
+                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setIsShareModalOpen(false)}>
+                    <div className="bg-gray-800 rounded-lg shadow-2xl p-6 border border-fuchsia-500/30 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-2xl font-display text-yellow-300 mb-6 text-center">Compartilhar Revista</h3>
+                        <div className="flex justify-center items-center gap-6">
+                            <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(`Confira a revista "${magazine.title}" que criei com a Retrô Gamer AI!`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-cyan-400 transition-colors" title="Compartilhar no Twitter">
+                                <TwitterIcon />
+                            </a>
+                             <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-blue-500 transition-colors" title="Compartilhar no Facebook">
+                                <FacebookIcon />
+                            </a>
+                            <a href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Confira a revista "${magazine.title}" que criei com a Retrô Gamer AI! ${window.location.href}`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-green-500 transition-colors" title="Compartilhar no WhatsApp">
+                                <WhatsAppIcon />
+                            </a>
+                        </div>
+                        <button onClick={() => setIsShareModalOpen(false)} className="mt-8 w-full bg-gray-700 text-white font-bold py-2 px-4 rounded hover:bg-gray-600 transition-colors font-display text-sm">
+                            Fechar
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex justify-end mb-6 sticky top-24 z-10 gap-4">
+                <button
+                    onClick={handleShare}
+                    className="bg-yellow-500 text-gray-900 font-bold py-2 px-6 hover:bg-yellow-600 transition-colors duration-300 shadow-lg font-display text-sm flex items-center gap-2"
+                >
+                    <ShareIcon className="w-4 h-4" />
+                    <span>Compartilhar</span>
+                </button>
+                <button
+                    onClick={handleDownloadDocx}
+                    disabled={isDownloadingDocx}
+                    className="bg-blue-600 text-white font-bold py-2 px-6 hover:bg-blue-700 transition-colors duration-300 shadow-lg font-display text-sm disabled:bg-blue-800 disabled:cursor-wait"
+                >
+                    {isDownloadingDocx ? 'Gerando DOCX...' : 'Baixar DOCX'}
+                </button>
                 <button
                     onClick={handleDownloadPdf}
                     disabled={isDownloadingPdf}
