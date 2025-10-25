@@ -13,6 +13,7 @@ interface MagazineViewerProps {
 }
 
 declare const jspdf: any;
+declare const html2canvas: any;
 
 const renderMarkdown = (markdown: string) => {
     const lines = markdown.split('\n');
@@ -209,148 +210,62 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
     
     const handleDownloadPdf = async () => {
         setIsDownloadingPdf(true);
+        const magazineElement = document.getElementById('magazine-content');
+        if (!magazineElement) {
+            console.error("Magazine content element not found!");
+            setIsDownloadingPdf(false);
+            return;
+        }
+    
+        // Add a temporary style to hide interactive elements during capture
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #magazine-content .group .absolute {
+                opacity: 0 !important;
+            }
+        `;
+        document.head.appendChild(style);
+    
         try {
             const { jsPDF } = jspdf;
-            const doc = new jsPDF('p', 'pt', 'a4');
-
-            const pageHeight = doc.internal.pageSize.getHeight();
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const margin = 40;
-            const contentWidth = pageWidth - margin * 2;
+            const pdf = new jsPDF('p', 'pt', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
             
-            // Helper to add base64 images to the PDF
-            const addImageFromBase64 = (base64: string, x: number, y: number, width: number, height: number): Promise<void> => {
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const format = base64.split(';')[0].split('/')[1].toUpperCase();
-                        doc.addImage(img, format, x, y, width, height);
-                        resolve();
-                    };
-                    img.src = base64;
-                });
-            };
-
-            // --- Page 1: Cover ---
-            await addImageFromBase64(magazine.coverImage, 0, 0, pageWidth, pageHeight * 0.8);
+            const canvas = await html2canvas(magazineElement, {
+                scale: 2, // Higher scale for better quality
+                useCORS: true,
+                backgroundColor: '#111827', // bg-gray-900
+                logging: false,
+                windowWidth: magazineElement.scrollWidth,
+                windowHeight: magazineElement.scrollHeight,
+            });
+    
+            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+            const imgProps = pdf.getImageProperties(imgData);
+            const scaledHeight = (imgProps.height * pdfWidth) / imgProps.width;
             
-            doc.setFontSize(28);
-            doc.setFont('helvetica', 'bold');
-            const titleLines = doc.splitTextToSize(magazine.title, contentWidth);
-            doc.text(titleLines, pageWidth / 2, pageHeight * 0.8 + 40, { align: 'center' });
-
-            // --- Smart Markdown Renderer ---
-            // This function renders markdown and handles page breaks intelligently
-            const renderContent = (markdown: string, startY: number): number => {
-                let cursorY = startY;
-                const lines = markdown.split('\n');
-
-                const addPageIfNeeded = (requiredHeight: number) => {
-                    if (cursorY + requiredHeight > pageHeight - margin) {
-                        doc.addPage();
-                        cursorY = margin;
-                        return true;
-                    }
-                    return false;
-                };
-
-                for (const line of lines) {
-                    if (line.trim() === '') continue;
-
-                    let isSubtitle = line.startsWith('### ');
-                    let isListItem = line.trim().startsWith('- ') || /^\d+\.\s/.test(line.trim());
-                    let lineContent = line;
-
-                    // Clean up markdown syntax for PDF
-                    if (isSubtitle) lineContent = line.substring(4);
-                    else if (line.trim().startsWith('- ')) lineContent = '• ' + line.trim().substring(2);
-                    else if (/^\d+\.\s/.test(line.trim())) lineContent = '  ' + line.trim(); // Indent ordered lists
-                    lineContent = lineContent.replace(/\*(.*?)\*/g, '$1');
-
-                    // --- Logic for Subtitles ---
-                    if (isSubtitle) {
-                        doc.setFontSize(14);
-                        doc.setFont('helvetica', 'bold');
-                        const splitLines = doc.splitTextToSize(lineContent, contentWidth);
-                        const textHeight = doc.getTextDimensions(splitLines).h;
-                        
-                        // Avoid orphan subtitles: check for space for subtitle + one line of text
-                        addPageIfNeeded(textHeight + 20);
-                        cursorY += 10;
-                        doc.text(splitLines, margin, cursorY);
-                        cursorY += textHeight + 5;
-                        continue;
-                    }
-                    
-                    // --- Logic for Paragraphs & Lists ---
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-                    const xPos = isListItem ? margin + 10 : margin;
-                    const effectiveWidth = contentWidth - (isListItem ? 10 : 0);
-                    const splitLines = doc.splitTextToSize(lineContent, effectiveWidth);
-
-                    for (const splitLine of splitLines) {
-                        const lineHeight = 12; // Approx height for 10pt font
-                        addPageIfNeeded(lineHeight);
-                        doc.text(splitLine, xPos, cursorY);
-                        cursorY += lineHeight;
-                    }
-                    if (!isListItem) cursorY += 4; // Add a small gap after paragraphs
-                }
-                return cursorY;
-            };
-
-
-            // --- Render Articles ---
-            for (const article of magazine.articles) {
-                doc.addPage();
-                let cursorY = margin;
-
-                // --- Article Title ---
-                doc.setFontSize(20);
-                doc.setFont('helvetica', 'bold');
-                const articleTitleLines = doc.splitTextToSize(article.title, contentWidth);
-                const titleHeight = doc.getTextDimensions(articleTitleLines).h;
-                doc.text(articleTitleLines, margin, cursorY);
-                cursorY += titleHeight + 20;
-
-                // --- Gameplay Image ---
-                const gameplayImg = article.images.find(img => img.type === 'gameplay');
-                if (gameplayImg) {
-                    const imgHeight = contentWidth * (9 / 16);
-                    if (cursorY + imgHeight > pageHeight - margin) {
-                        doc.addPage();
-                        cursorY = margin;
-                    }
-                    await addImageFromBase64(gameplayImg.url, margin, cursorY, contentWidth, imgHeight);
-                    cursorY += imgHeight + 20;
-                }
-                
-                // --- Article Content ---
-                cursorY = renderContent(article.content, cursorY);
-
-                // --- Tips Section Header ---
-                const tipsTitle = 'Dicas e Macetes';
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                const tipsTitleHeight = doc.getTextDimensions(tipsTitle).h;
-                // Check if there's enough room for the header and some content
-                if (cursorY + tipsTitleHeight + 24 > pageHeight - margin) {
-                    doc.addPage();
-                    cursorY = margin;
-                }
-                cursorY += 20; // Space before tips section
-                doc.text(tipsTitle, margin, cursorY);
-                cursorY += tipsTitleHeight + 10;
-
-                // --- Tips Content ---
-                cursorY = renderContent(article.tips, cursorY);
+            let heightLeft = scaledHeight;
+            let position = 0;
+    
+            // Add the first page
+            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, scaledHeight, undefined, 'FAST');
+            heightLeft -= pdfHeight;
+    
+            // Add subsequent pages if needed
+            while (heightLeft > 0) {
+                position = heightLeft - scaledHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, scaledHeight, undefined, 'FAST');
+                heightLeft -= pdfHeight;
             }
-
-            doc.save(`${magazine.title.replace(/\s+/g, '_')}.pdf`);
+    
+            pdf.save(`${magazine.title.replace(/\s+/g, '_')}.pdf`);
         } catch (error) {
             console.error("Erro ao gerar PDF:", error);
         } finally {
+            // Cleanup
+            document.head.removeChild(style);
             setIsDownloadingPdf(false);
         }
     };
@@ -480,92 +395,93 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 </button>
             </div>
             
-            <article id="magazine-content" className="bg-gray-800 p-4 sm:p-8 md:p-12 shadow-2xl relative overflow-hidden">
-                <div className="scanlines"></div>
-                
-                <header className="mb-12 text-center">
-                    <div className="relative w-full h-auto mb-6 group border-4 border-fuchsia-500 shadow-lg shadow-fuchsia-500/20">
-                        <img src={magazine.coverImage} alt="Capa da Revista" className="w-full h-full object-cover" />
-                        <RegenerateImageButton 
-                            imageId="coverImage" 
-                            onRegenerate={onImageRegenerate}
-                            isLoading={!!isGeneratingImage['coverImage']}
+            <div id="magazine-content-wrapper" className="bg-gray-800">
+                <article id="magazine-content" className="bg-gray-800 p-4 sm:p-8 md:p-12 shadow-2xl relative overflow-hidden">
+                    
+                    <header className="mb-12 text-center">
+                        <div className="relative w-full h-auto mb-6 group border-4 border-fuchsia-500 shadow-lg shadow-fuchsia-500/20">
+                            <img src={magazine.coverImage} alt="Capa da Revista" className="w-full h-full object-cover" />
+                            <RegenerateImageButton 
+                                imageId="coverImage" 
+                                onRegenerate={onImageRegenerate}
+                                isLoading={!!isGeneratingImage['coverImage']}
+                            />
+                        </div>
+                        <EditableText
+                            tag="h1"
+                            text={magazine.title}
+                            onSave={(newText: string) => onTextUpdate('title', newText)}
+                            className="text-4xl md:text-6xl font-display text-yellow-300 break-words"
                         />
-                    </div>
-                    <EditableText
-                        tag="h1"
-                        text={magazine.title}
-                        onSave={(newText: string) => onTextUpdate('title', newText)}
-                        className="text-4xl md:text-6xl font-display text-yellow-300 break-words"
-                    />
-                </header>
+                    </header>
 
-                <div className="flex flex-col space-y-16">
-                    {magazine.articles.map((article, index) => {
-                        const articlePath = `articles.${index}`;
-                        return (
-                            <section
-                                key={article.id}
-                                id={article.id}
-                                ref={(el) => {
-                                    articleRefs.current[index] = el;
-                                }}
-                            >
-                                <div className="flex justify-between items-start gap-4 mb-6">
-                                    <EditableText
-                                        tag="h2"
-                                        text={article.title}
-                                        onSave={(newText) => onTextUpdate(`${articlePath}.title`, newText)}
-                                        className="text-3xl md:text-4xl font-display text-cyan-400 break-words flex-1"
+                    <div className="flex flex-col space-y-16">
+                        {magazine.articles.map((article, index) => {
+                            const articlePath = `articles.${index}`;
+                            return (
+                                <section
+                                    key={article.id}
+                                    id={article.id}
+                                    ref={(el) => {
+                                        articleRefs.current[index] = el;
+                                    }}
+                                >
+                                    <div className="flex justify-between items-start gap-4 mb-6">
+                                        <EditableText
+                                            tag="h2"
+                                            text={article.title}
+                                            onSave={(newText) => onTextUpdate(`${articlePath}.title`, newText)}
+                                            className="text-3xl md:text-4xl font-display text-cyan-400 break-words flex-1"
+                                        />
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <button
+                                                onClick={() => setReadingArticle(article)}
+                                                className="bg-cyan-600 text-white font-bold py-2 px-4 hover:bg-cyan-700 transition-colors duration-300 shadow-lg font-display text-xs"
+                                                title="Entrar no modo leitura"
+                                            >
+                                                Leitura
+                                            </button>
+                                            <button
+                                                onClick={() => handleDownloadArticle(article)}
+                                                className="bg-purple-600 text-white font-bold py-2 px-4 hover:bg-purple-700 transition-colors duration-300 shadow-lg font-display text-xs flex items-center gap-2"
+                                                title="Baixar este artigo em HTML"
+                                            >
+                                                <DownloadIcon className="w-4 h-4" />
+                                                <span>Salvar</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <ImageGallery
+                                        images={article.images}
+                                        onRegenerate={onImageRegenerate}
+                                        isGeneratingImage={isGeneratingImage}
                                     />
-                                     <div className="flex items-center gap-2 flex-shrink-0">
-                                        <button
-                                            onClick={() => setReadingArticle(article)}
-                                            className="bg-cyan-600 text-white font-bold py-2 px-4 hover:bg-cyan-700 transition-colors duration-300 shadow-lg font-display text-xs"
-                                            title="Entrar no modo leitura"
-                                        >
-                                            Leitura
-                                        </button>
-                                        <button
-                                            onClick={() => handleDownloadArticle(article)}
-                                            className="bg-purple-600 text-white font-bold py-2 px-4 hover:bg-purple-700 transition-colors duration-300 shadow-lg font-display text-xs flex items-center gap-2"
-                                            title="Baixar este artigo em HTML"
-                                        >
-                                            <DownloadIcon className="w-4 h-4" />
-                                            <span>Salvar</span>
-                                        </button>
-                                     </div>
-                                </div>
-                                <ImageGallery
-                                    images={article.images}
-                                    onRegenerate={onImageRegenerate}
-                                    isGeneratingImage={isGeneratingImage}
-                                />
-                                <EditableText
-                                    tag="div"
-                                    text={article.content}
-                                    onSave={(newText) => onTextUpdate(`${articlePath}.content`, newText)}
-                                    className="text-lg"
-                                    renderFunction={renderMarkdown}
-                                    isTextArea
-                                />
-                                <div className="mt-8 p-6 border-2 border-dashed border-yellow-400 bg-black/20 rounded-lg">
-                                    <h4 className="font-display text-xl text-yellow-300 mb-4">Dicas e Macetes</h4>
                                     <EditableText
                                         tag="div"
-                                        text={article.tips}
-                                        onSave={(newText) => onTextUpdate(`${articlePath}.tips`, newText)}
+                                        text={article.content}
+                                        onSave={(newText) => onTextUpdate(`${articlePath}.content`, newText)}
                                         className="text-lg"
                                         renderFunction={renderMarkdown}
                                         isTextArea
                                     />
-                                </div>
-                                <Comments articleId={article.id} />
-                            </section>
-                        );
-                    })}
-                </div>
-            </article>
+                                    <div className="mt-8 p-6 border-2 border-dashed border-yellow-400 bg-black/20 rounded-lg">
+                                        <h4 className="font-display text-xl text-yellow-300 mb-4">Dicas e Macetes</h4>
+                                        <EditableText
+                                            tag="div"
+                                            text={article.tips}
+                                            onSave={(newText) => onTextUpdate(`${articlePath}.tips`, newText)}
+                                            className="text-lg"
+                                            renderFunction={renderMarkdown}
+                                            isTextArea
+                                        />
+                                    </div>
+                                    <Comments articleId={article.id} />
+                                </section>
+                            );
+                        })}
+                    </div>
+                </article>
+            </div>
 
             <footer ref={navFooterRef} className="sticky bottom-0 z-30 mt-8">
                  {isNavOpen && (

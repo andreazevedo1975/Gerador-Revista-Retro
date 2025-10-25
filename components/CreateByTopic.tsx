@@ -51,7 +51,7 @@ const InfoIcon: React.FC = () => (
 );
 
 
-const CreateByTopic: React.FC<CreateByTopicProps> = ({ type, onGenerate, onBack }) => {
+const CreateByTopic: React.FC<CreateByTopicProps> = ({ type, onGenerate }) => {
     const [topic, setTopic] = useState('');
     const [isDeepMode, setIsDeepMode] = useState(false);
     const { title, description, placeholder } = config[type];
@@ -65,16 +65,6 @@ const CreateByTopic: React.FC<CreateByTopicProps> = ({ type, onGenerate, onBack 
 
     return (
         <div className="max-w-xl mx-auto bg-gray-800/50 p-8 rounded-lg shadow-2xl border border-fuchsia-500/30">
-             <button
-                onClick={onBack}
-                className="text-cyan-300 flex items-center gap-2 hover:text-yellow-300 transition-colors mb-6 p-2 -ml-2 rounded-md hover:bg-fuchsia-500/50"
-                title="Voltar para Central de Criação"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                </svg>
-                <span>Voltar</span>
-            </button>
             <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-4 text-center">{title}</h2>
             <p className="text-gray-400 mb-6 text-center">{description}</p>
             

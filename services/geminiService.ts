@@ -1,6 +1,41 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MagazineStructure, ImageType } from '../types';
 
+// Helper function for delays
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+/**
+ * A wrapper function to retry an async operation if it fails due to a rate limit or quota error.
+ * Uses exponential backoff for delays.
+ * @param fn The async function to execute.
+ * @param retries Number of retries.
+ * @param initialDelay Initial delay in ms.
+ * @returns The result of the async function.
+ */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, initialDelay = 2000): Promise<T> {
+    let lastError: any;
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (error: any) {
+            lastError = error;
+            // Check if the error message indicates a rate limit or quota issue
+            const errorMessage = (error.message || error.toString()).toLowerCase();
+            if (errorMessage.includes('429') || errorMessage.includes('resource_exhausted') || errorMessage.includes('quota')) {
+                const delayTime = initialDelay * Math.pow(2, i);
+                console.warn(`Rate limit or quota error detected. Retrying in ${delayTime}ms... (Attempt ${i + 1}/${retries})`);
+                await delay(delayTime);
+            } else {
+                // Not a retryable error, throw immediately.
+                throw error;
+            }
+        }
+    }
+    console.error("Operation failed after multiple retries.", lastError);
+    throw lastError;
+}
+
+
 const structureSchema = {
     type: Type.OBJECT,
     properties: {
@@ -10,7 +45,7 @@ const structureSchema = {
         },
         coverImagePrompt: {
             type: Type.STRING,
-            description: "Um prompt em inglês, detalhado para gerar a capa da revista. Deve ser no estilo pixel art ou arte digital inspirada nos anos 90. Ex: '16-bit pixel art of a heroic space marine fighting aliens inside a dark spaceship, vibrant colors, cinematic'.",
+            description: "Um prompt em inglês, altamente detalhado para gerar a capa da revista. O estilo deve ser 'vibrant 16-bit pixel art' ou '90s anime/manga box art'. O prompt deve descrever uma cena de ação dinâmica e cinematográfica com iluminação dramática. Ex: 'Vibrant and detailed 16-bit pixel art, cover of a 90s game magazine, a heroic knight in golden armor clashing swords with a massive fire dragon in a dark castle, sparks flying, dramatic lighting, epic cinematic angle'.",
         },
         articles: {
             type: Type.ARRAY,
@@ -59,14 +94,13 @@ const structureSchema = {
 
 export async function generateMagazineStructure(idea: string, isDeepMode: boolean): Promise<MagazineStructure> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
     const modelName = isDeepMode ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
 
     let prompt = `
         Você é um editor de uma revista de videogames retrô dos anos 90 chamada "Retrô Gamer AI".
         Crie a estrutura para uma nova edição da revista com base na seguinte pauta: "${idea}".
         A revista deve ter um tom divertido, informativo e nostálgico e ter entre 3 e 5 artigos.
-        Para a capa, crie um prompt de imagem em inglês, detalhado e no estilo pixel art.
+        Para a capa, crie um prompt de imagem em inglês que seja extremamente detalhado e evocativo. O objetivo é gerar uma arte de capa espetacular no estilo das revistas de videogame dos anos 90. Instrua a IA de imagem a usar um estilo 'vibrant 16-bit pixel art' ou '90s Japanese box art'. O prompt deve focar em uma cena de ação dinâmica, com composição cinematográfica, iluminação dramática e cores vibrantes, capturando a essência do tópico principal.
         Para cada artigo, forneça um título, um prompt para gerar seu conteúdo, um prompt para uma seção de 'Dicas e Macetes', e um array com exatamente 3 prompts de imagem em inglês.
 
         As imagens devem ser relevantes para o artigo.
@@ -86,50 +120,51 @@ export async function generateMagazineStructure(idea: string, isDeepMode: boolea
         prompt += `\nMODO PROFUNDO ATIVADO: A pauta deve ser abordada com profundidade máxima, oferecendo insights únicos e uma análise crítica e detalhada. O nível de escrita deve ser profissional e aprofundado, e os prompts gerados devem refletir essa complexidade.`;
     }
 
-    const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: structureSchema,
-        },
-    });
-
-    const jsonText = response.text.trim();
-    try {
-        const parsed = JSON.parse(jsonText);
-        // Ensure imagePrompts exist and have 3 items
-        parsed.articles.forEach((article: any) => {
-            if (!article.imagePrompts || article.imagePrompts.length !== 3) {
-                throw new Error("Validation failed: Each article must have exactly 3 image prompts.");
-            }
+    return withRetry(async () => {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: structureSchema,
+            },
         });
-        return parsed as MagazineStructure;
-    } catch (e) {
-        console.error("Failed to parse or validate JSON from Gemini:", jsonText, e);
-        throw new Error("A resposta da IA não estava no formato JSON esperado ou falhou na validação.");
-    }
+
+        const jsonText = response.text.trim();
+        try {
+            const parsed = JSON.parse(jsonText);
+            // Ensure imagePrompts exist and have 3 items
+            parsed.articles.forEach((article: any) => {
+                if (!article.imagePrompts || article.imagePrompts.length !== 3) {
+                    throw new Error("Validation failed: Each article must have exactly 3 image prompts.");
+                }
+            });
+            return parsed as MagazineStructure;
+        } catch (e) {
+            console.error("Failed to parse or validate JSON from Gemini:", jsonText, e);
+            throw new Error("A resposta da IA não estava no formato JSON esperado ou falhou na validação.");
+        }
+    });
 }
 
 export async function generateText(prompt: string): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-            systemInstruction: "Você é um jornalista de uma revista de games dos anos 90. Sua escrita é empolgante, cheia de gírias da época e muito informativa. Você formata o texto usando Markdown simples."
-        }
+    return withRetry(async () => {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                systemInstruction: "Você é um jornalista de uma revista de games dos anos 90. Sua escrita é empolgante, cheia de gírias da época e muito informativa. Você formata o texto usando Markdown simples."
+            }
+        });
+        return response.text;
     });
-    return response.text;
 }
 
-const getAspectRatioForType = (type: ImageType): '3:4' | '16:9' | '1:1' => {
+const getAspectRatioForType = (type: ImageType): '3:4' | '16:9' => {
     switch (type) {
         case 'artwork':
             return '3:4'; // Box art style
-        case 'icon':
-            return '1:1'; // Square for icons
         case 'logo':
         case 'gameplay':
             return '16:9'; // Widescreen for logos and gameplay
@@ -152,35 +187,36 @@ export async function generateImage({
     modificationPrompt = ''
 }: GenerateImageOptions): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    return withRetry(async () => {
+        const aspectRatio = type === 'cover' ? '3:4' : getAspectRatioForType(type as ImageType);
+        
+        let finalPrompt = prompt;
+        
+        if (modificationPrompt.trim()) {
+            finalPrompt = `Based on the idea "${prompt}", generate a new 16-bit pixel art image with the following modification: "${modificationPrompt}". Maintain the original style.`;
+        } else {
+            // If no modification is given, ask for a variation to avoid identical images
+            finalPrompt = `Generate a new creative variation of this 16-bit pixel art image concept: "${prompt}".`;
+        }
+        
+        if (quality === 'high') {
+            finalPrompt += ", masterpiece, ultra detailed, high fidelity pixel art, best quality, cinematic lighting";
+        }
+        
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: finalPrompt,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/jpeg',
+              aspectRatio: aspectRatio,
+            },
+        });
 
-    const aspectRatio = type === 'cover' ? '3:4' : getAspectRatioForType(type as ImageType);
-    
-    let finalPrompt = prompt;
-    
-    if (modificationPrompt.trim()) {
-        finalPrompt = `Based on the idea "${prompt}", generate a new 16-bit pixel art image with the following modification: "${modificationPrompt}". Maintain the original style.`;
-    } else if (type !== 'icon') {
-        // If no modification is given, ask for a variation to avoid identical images, but not for icons.
-        finalPrompt = `Generate a new creative variation of this 16-bit pixel art image concept: "${prompt}".`;
-    }
-    
-    if (quality === 'high') {
-        finalPrompt += ", masterpiece, ultra detailed, high fidelity pixel art, best quality, cinematic lighting";
-    }
-    
-    const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
-        prompt: finalPrompt,
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/jpeg',
-          aspectRatio: aspectRatio,
-        },
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
+            return `data:image/jpeg;base64,${base64ImageBytes}`;
+        }
+        throw new Error("A geração de imagem falhou ou não retornou imagens.");
     });
-
-    if (response.generatedImages && response.generatedImages.length > 0) {
-        const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
-        return `data:image/jpeg;base64,${base64ImageBytes}`;
-    }
-    throw new Error("A geração de imagem falhou ou não retornou imagens.");
 }

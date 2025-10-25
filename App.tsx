@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Magazine, MagazineStructure, GenerationState, CreationType } from './types';
 import * as geminiService from './services/geminiService';
 import MagazineViewer from './components/EbookViewer';
@@ -8,6 +8,8 @@ import CreateByTopic from './components/CreateByTopic';
 import MagazineComposer from './components/MagazineComposer';
 
 type View = 'hub' | 'create' | 'composer' | 'magazine';
+
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 const App: React.FC = () => {
     const [magazine, setMagazine] = useState<Magazine | null>(null);
@@ -19,6 +21,17 @@ const App: React.FC = () => {
     const [isGeneratingImage, setIsGeneratingImage] = useState<Record<string, boolean>>({});
     const [view, setView] = useState<View>('hub');
     const [currentCreationType, setCurrentCreationType] = useState<CreationType | null>(null);
+
+    // Save magazine state to localStorage whenever it changes
+    useEffect(() => {
+        if (magazine && view !== 'hub') {
+            try {
+                localStorage.setItem('retroGamerSavedMagazine', JSON.stringify(magazine));
+            } catch (error) {
+                console.error("Falha ao salvar o estado da revista:", error);
+            }
+        }
+    }, [magazine, view]);
 
     const addLoadingMessage = (message: string) => {
         setLoadingMessages(prev => [...prev, message]);
@@ -103,24 +116,30 @@ const App: React.FC = () => {
         setGenerationStatus(prev => ({ ...prev, [articleId]: 'generating' }));
 
         try {
-            // Generate text and images in parallel
-            const [content, tips, images] = await Promise.all([
-                geminiService.generateText(articleStruct.contentPrompt),
-                geminiService.generateText(articleStruct.tipsPrompt),
-                Promise.all(articleStruct.imagePrompts.map(imgPrompt =>
-                    geminiService.generateImage({prompt: imgPrompt.prompt, type: imgPrompt.type})
-                ))
-            ]);
+            const content = await geminiService.generateText(articleStruct.contentPrompt);
+            await delay(1000); // Add delay to space out API calls
+            const tips = await geminiService.generateText(articleStruct.tipsPrompt);
+            
+            const images: string[] = [];
+            for (const imgPrompt of articleStruct.imagePrompts) {
+                await delay(1000); // Add delay before each image generation
+                const imageUrl = await geminiService.generateImage({ prompt: imgPrompt.prompt, type: imgPrompt.type });
+                images.push(imageUrl);
+            }
 
             setMagazine(prev => {
                 if (!prev) return null;
-                const newMagazine = JSON.parse(JSON.stringify(prev)); // Deep copy
-                newMagazine.articles[articleIndex].content = content;
-                newMagazine.articles[articleIndex].tips = tips;
-                newMagazine.articles[articleIndex].images.forEach((img: any, i: number) => {
-                    img.url = images[i];
-                });
-                return newMagazine;
+                const newArticles = [...prev.articles];
+                newArticles[articleIndex] = {
+                    ...newArticles[articleIndex],
+                    content,
+                    tips,
+                    images: newArticles[articleIndex].images.map((img, i) => ({
+                        ...img,
+                        url: images[i],
+                    })),
+                };
+                return { ...prev, articles: newArticles };
             });
 
             setGenerationStatus(prev => ({ ...prev, [articleId]: 'done' }));
@@ -132,13 +151,15 @@ const App: React.FC = () => {
         }
     }, [magazine, magazineStructure]);
 
-    const handleGenerateAll = useCallback(() => {
+
+    const handleGenerateAll = useCallback(async () => {
         if (!magazine || !magazineStructure) return;
 
-        handleGenerateCover();
-        magazineStructure.articles.forEach((_, index) => {
-            handleGenerateArticle(index);
-        });
+        await handleGenerateCover();
+        for (let i = 0; i < magazineStructure.articles.length; i++) {
+            await delay(1000); // Add delay between generating each article
+            await handleGenerateArticle(i);
+        }
     }, [magazine, magazineStructure, handleGenerateCover, handleGenerateArticle]);
     
     const handleGenerate = (topic: string, type: CreationType, isDeepMode: boolean) => {
@@ -187,24 +208,30 @@ const App: React.FC = () => {
     const handleTextUpdate = useCallback((path: string, newText: string) => {
         setMagazine(prevMagazine => {
             if (!prevMagazine) return null;
-            
-            const newMagazine = JSON.parse(JSON.stringify(prevMagazine)); // Deep copy
+
             const keys = path.split('.');
-            let current: any = newMagazine;
             
-            for (let i = 0; i < keys.length - 1; i++) {
-                const key = keys[i];
-                const nextKey = keys[i+1];
-                if (!isNaN(Number(nextKey))) { // Array index
-                    current = current[key][Number(nextKey)];
-                    i++;
-                } else {
-                    current = current[key];
+            if (keys.length === 1 && keys[0] === 'title') {
+                return { ...prevMagazine, title: newText };
+            }
+            
+            if (keys.length === 3 && keys[0] === 'articles') {
+                const articleIndex = parseInt(keys[1], 10);
+                const property = keys[2] as 'title' | 'content' | 'tips';
+
+                const newArticles = [...prevMagazine.articles];
+                const oldArticle = newArticles[articleIndex];
+                
+                if (oldArticle && oldArticle[property] !== newText) {
+                     newArticles[articleIndex] = {
+                        ...oldArticle,
+                        [property]: newText
+                    };
+                    return { ...prevMagazine, articles: newArticles };
                 }
             }
-            current[keys[keys.length - 1]] = newText;
             
-            return newMagazine;
+            return prevMagazine;
         });
     }, []);
 
@@ -242,16 +269,20 @@ const App: React.FC = () => {
             
             setMagazine(prevMagazine => {
                 if (!prevMagazine) return null;
-                const newMagazine = JSON.parse(JSON.stringify(prevMagazine)); // Deep copy
                 if (path === 'coverImage') {
-                    newMagazine.coverImage = newImage;
+                    return { ...prevMagazine, coverImage: newImage };
                 } else {
                     const parts = path.split('-');
                     const articleIndex = parseInt(parts[1], 10);
                     const imageIndex = parseInt(parts[3], 10);
-                    newMagazine.articles[articleIndex].images[imageIndex].url = newImage;
+                    
+                    const newArticles = [...prevMagazine.articles];
+                    const newImages = [...newArticles[articleIndex].images];
+                    newImages[imageIndex] = { ...newImages[imageIndex], url: newImage };
+                    newArticles[articleIndex] = { ...newArticles[articleIndex], images: newImages };
+                    
+                    return { ...prevMagazine, articles: newArticles };
                 }
-                return newMagazine;
             });
 
         } catch (err: any) {
@@ -262,6 +293,41 @@ const App: React.FC = () => {
         }
     }, [magazine]);
     
+    const hasSavedMagazine = (): boolean => {
+        try {
+            return !!localStorage.getItem('retroGamerSavedMagazine');
+        } catch (error) {
+            console.error("Não foi possível verificar a revista salva:", error);
+            return false;
+        }
+    };
+
+    const handleLoadSavedMagazine = () => {
+        try {
+            const savedMagazineJSON = localStorage.getItem('retroGamerSavedMagazine');
+            if (savedMagazineJSON) {
+                const savedMagazine: Magazine = JSON.parse(savedMagazineJSON);
+                setMagazine(savedMagazine);
+
+                // Since we are loading a complete magazine, all generation statuses are 'done'.
+                const status: Record<string, GenerationState> = { cover: 'done' };
+                savedMagazine.articles.forEach((_, index) => {
+                    status[`article-${index}`] = 'done';
+                });
+                setGenerationStatus(status);
+                
+                // Go straight to the viewer as the structure isn't saved.
+                setMagazineStructure(null); 
+                setView('magazine');
+            } else {
+                setError("Nenhuma revista salva foi encontrada.");
+            }
+        } catch (error) {
+            console.error("Falha ao carregar a revista salva:", error);
+            setError("Não foi possível carregar a revista salva. O arquivo pode estar corrompido.");
+        }
+    };
+
     const renderContent = () => {
         if (error && !isLoading) {
              return (
@@ -297,7 +363,11 @@ const App: React.FC = () => {
                 return currentCreationType ? <CreateByTopic type={currentCreationType} onGenerate={handleGenerate} onBack={handleBackToHub} /> : null;
             case 'hub':
             default:
-                return <CreationHub onSelectCreationType={handleSelectCreationType} />;
+                return <CreationHub 
+                    onSelectCreationType={handleSelectCreationType} 
+                    onLoadSavedMagazine={handleLoadSavedMagazine}
+                    hasSavedMagazine={hasSavedMagazine()}
+                />;
         }
     };
 
