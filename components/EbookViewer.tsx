@@ -13,7 +13,6 @@ interface MagazineViewerProps {
 }
 
 declare const jspdf: any;
-declare const html2canvas: any;
 declare const htmlDocx: any;
 declare const saveAs: any;
 
@@ -238,63 +237,180 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
     
     const handleDownloadPdf = async () => {
         setIsDownloadingPdf(true);
-        const magazineElement = document.getElementById('magazine-content');
-        if (!magazineElement) {
-            console.error("Magazine content element not found!");
-            setIsDownloadingPdf(false);
-            return;
-        }
-    
-        const style = document.createElement('style');
-        style.innerHTML = `
-            #magazine-content .group .absolute {
-                opacity: 0 !important;
-            }
-        `;
-        document.head.appendChild(style);
-    
         try {
             const { jsPDF } = jspdf;
             const pdf = new jsPDF('p', 'pt', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-
+    
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const pageWidth = pdf.internal.pageSize.getWidth();
             const margin = 40;
-            const contentWidth = pdfWidth - margin * 2;
-            const contentHeight = pdfHeight - margin * 2;
-            
-            const canvas = await html2canvas(magazineElement, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#111827',
-                logging: false,
-                windowWidth: magazineElement.scrollWidth,
-                windowHeight: magazineElement.scrollHeight,
-            });
+            const contentWidth = pageWidth - margin * 2;
+            let y = margin;
     
-            const imgData = canvas.toDataURL('image/jpeg', 0.95);
-            const imgProps = pdf.getImageProperties(imgData);
-            
-            const scaledImgHeight = (imgProps.height * contentWidth) / imgProps.width;
-            
-            let heightLeft = scaledImgHeight;
-            let position = 0;
+            const addPageIfNeeded = (spaceNeeded: number) => {
+                if (y + spaceNeeded > pageHeight - margin) {
+                    pdf.addPage();
+                    y = margin;
+                }
+            };
     
-            pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, scaledImgHeight, undefined, 'FAST');
-            heightLeft -= contentHeight;
+            const loadImage = (src: string): Promise<HTMLImageElement> => {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.onload = () => resolve(img);
+                    img.onerror = (err) => reject(err);
+                    img.src = src;
+                });
+            };
     
-            while (heightLeft > 0) {
-                position -= contentHeight;
+            const parseMarkdownForPdf = (markdown: string) => {
+                const lines = markdown.split('\n');
+                let isUl = false;
+                let isOl = false;
+                let olCounter = 1;
+    
+                lines.forEach(line => {
+                    const trimmedLine = line.trim();
+                    const isUnorderedItem = trimmedLine.startsWith('- ');
+                    const isOrderedItem = /^\d+\.\s/.test(trimmedLine);
+    
+                    if (line.startsWith('### ')) {
+                        isUl = isOl = false;
+                        addPageIfNeeded(30);
+                        pdf.setFontSize(16);
+                        pdf.setFont('helvetica', 'bold');
+                        const text = line.substring(4);
+                        const textLines = pdf.splitTextToSize(text, contentWidth);
+                        const textHeight = pdf.getTextDimensions(textLines).h;
+                        addPageIfNeeded(textHeight);
+                        pdf.text(textLines, margin, y);
+                        y += textHeight + 10;
+                    } else if (isUnorderedItem) {
+                        isOl = false;
+                        if (!isUl) y += 5;
+                        isUl = true;
+                        
+                        pdf.setFontSize(12);
+                        pdf.setFont('helvetica', 'normal');
+                        const text = trimmedLine.substring(2).trim();
+                        const textLines = pdf.splitTextToSize(text, contentWidth - 20); // Indent
+                        const textHeight = pdf.getTextDimensions(textLines).h;
+                        addPageIfNeeded(textHeight);
+                        pdf.text('•', margin, y + pdf.getLineHeight() / 2);
+                        pdf.text(textLines, margin + 15, y);
+                        y += textHeight + 5;
+                    } else if (isOrderedItem) {
+                        isUl = false;
+                        if (!isOl) {
+                            olCounter = 1;
+                            y += 5;
+                        }
+                        isOl = true;
+
+                        pdf.setFontSize(12);
+                        pdf.setFont('helvetica', 'normal');
+                        const text = trimmedLine.substring(trimmedLine.indexOf(' ') + 1).trim();
+                        const textLines = pdf.splitTextToSize(text, contentWidth - 20); // Indent
+                        const textHeight = pdf.getTextDimensions(textLines).h;
+                        addPageIfNeeded(textHeight);
+                        pdf.text(`${olCounter++}.`, margin, y);
+                        pdf.text(textLines, margin + 15, y);
+                        y += textHeight + 5;
+                    } else if (trimmedLine !== '') {
+                        if (isUl || isOl) y += 10;
+                        isUl = isOl = false;
+                        
+                        addPageIfNeeded(20);
+                        pdf.setFontSize(12);
+                        pdf.setFont('helvetica', 'normal');
+                        const textLines = pdf.splitTextToSize(line, contentWidth);
+                        const textHeight = pdf.getTextDimensions(textLines).h;
+                        addPageIfNeeded(textHeight);
+                        pdf.text(textLines, margin, y);
+                        y += textHeight + 10;
+                    }
+                });
+            };
+    
+            // 1. Cover Page
+            pdf.setFontSize(28);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(40, 40, 40);
+    
+            if (magazine.coverImage) {
+                const coverImg = await loadImage(magazine.coverImage);
+                const imgAspectRatio = coverImg.width / coverImg.height;
+                let imgHeight = (pageWidth * 0.75) / imgAspectRatio;
+                let imgWidth = pageWidth * 0.75;
+                if (imgHeight > pageHeight * 0.6) {
+                    imgHeight = pageHeight * 0.6;
+                    imgWidth = imgHeight * imgAspectRatio;
+                }
+                const imgX = (pageWidth - imgWidth) / 2;
+                y = margin;
+                pdf.addImage(coverImg, 'JPEG', imgX, y, imgWidth, imgHeight);
+                y += imgHeight + 30;
+            }
+    
+            const titleLines = pdf.splitTextToSize(magazine.title, contentWidth * 0.8);
+            const titleHeight = pdf.getTextDimensions(titleLines).h;
+            addPageIfNeeded(titleHeight);
+            pdf.text(titleLines, pageWidth / 2, y, { align: 'center' });
+    
+            // 2. Articles
+            for (const article of magazine.articles) {
                 pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', margin, position + margin, contentWidth, scaledImgHeight, undefined, 'FAST');
-                heightLeft -= contentHeight;
+                y = margin;
+    
+                pdf.setFontSize(22);
+                pdf.setFont('helvetica', 'bold');
+                pdf.setTextColor(0, 82, 122);
+                const articleTitleLines = pdf.splitTextToSize(article.title, contentWidth);
+                const articleTitleHeight = pdf.getTextDimensions(articleTitleLines).h;
+                addPageIfNeeded(articleTitleHeight);
+                pdf.text(articleTitleLines, margin, y);
+                y += articleTitleHeight + 20;
+                
+                pdf.setTextColor(40, 40, 40);
+
+                if (article.images && article.images.length > 0) {
+                    for (const image of article.images) {
+                        if (!image.url) continue;
+                        try {
+                            const articleImg = await loadImage(image.url);
+                            const articleImgAspectRatio = articleImg.width / articleImg.height;
+                            const articleImgHeight = contentWidth / articleImgAspectRatio;
+                            addPageIfNeeded(articleImgHeight + 15);
+                            pdf.addImage(articleImg, 'JPEG', margin, y, contentWidth, articleImgHeight);
+                            y += articleImgHeight + 15;
+                        } catch (e) {
+                            console.error("Could not load image for PDF:", e);
+                        }
+                    }
+                }
+    
+                parseMarkdownForPdf(article.content);
+                
+                addPageIfNeeded(40);
+                y += 20;
+                pdf.setDrawColor(200, 200, 200);
+                pdf.line(margin, y, pageWidth - margin, y);
+                y += 20;
+                pdf.setFontSize(18);
+                pdf.setFont('helvetica', 'bold');
+                pdf.setTextColor(0, 82, 122);
+                pdf.text("Dicas e Macetes", margin, y);
+                y += 25;
+                pdf.setTextColor(40, 40, 40);
+                parseMarkdownForPdf(article.tips);
             }
     
             pdf.save(`${magazine.title.replace(/\s+/g, '_')}.pdf`);
+    
         } catch (error) {
             console.error("Erro ao gerar PDF:", error);
         } finally {
-            document.head.removeChild(style);
             setIsDownloadingPdf(false);
         }
     };
@@ -305,38 +421,37 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
             const markdownToHtml = (markdown: string): string => {
                 const lines = markdown.split('\n');
                 let html = '';
-                let inUl = false;
-                let inOl = false;
-
-                const closeLists = () => {
-                    if (inUl) html += '</ul>';
-                    if (inOl) html += '</ol>';
-                    inUl = false;
-                    inOl = false;
+                const listStack: ('ul' | 'ol')[] = [];
+    
+                const closeLists = (targetLevel = 0) => {
+                    while (listStack.length > targetLevel) {
+                        const listType = listStack.pop();
+                        html += `</${listType}>`;
+                    }
                 };
-                
+    
                 const processLine = (line: string) => line.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
+    
                 lines.forEach(line => {
                     const trimmedLine = line.trim();
                     const isUl = trimmedLine.startsWith('- ');
                     const isOl = /^\d+\.\s/.test(trimmedLine);
-
+    
                     if (trimmedLine.startsWith('### ')) {
                         closeLists();
                         html += `<h3>${processLine(trimmedLine.substring(4))}</h3>`;
                     } else if (isUl) {
-                        if (inOl) closeLists();
-                        if (!inUl) {
+                        if (listStack[listStack.length - 1] !== 'ul') {
+                            closeLists();
                             html += '<ul>';
-                            inUl = true;
+                            listStack.push('ul');
                         }
                         html += `<li>${processLine(trimmedLine.substring(2))}</li>`;
                     } else if (isOl) {
-                        if (inUl) closeLists();
-                        if (!inOl) {
+                        if (listStack[listStack.length - 1] !== 'ol') {
+                            closeLists();
                             html += '<ol>';
-                            inOl = true;
+                            listStack.push('ol');
                         }
                         html += `<li>${processLine(trimmedLine.substring(trimmedLine.indexOf(' ') + 1))}</li>`;
                     } else {
@@ -349,32 +464,44 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 closeLists();
                 return html;
             };
-
+    
+            const styles = `
+                <style>
+                    body { font-family: Calibri, sans-serif; font-size: 11pt; }
+                    h1 { font-size: 24pt; font-weight: bold; color: #1E4E79; text-align: center; }
+                    h2 { font-size: 18pt; font-weight: bold; color: #1E4E79; page-break-before: always; border-bottom: 1px solid #BFBFBF; padding-bottom: 6px; margin-top: 24px; }
+                    h3 { font-size: 14pt; font-weight: bold; color: #2E74B5; margin-top: 18px; }
+                    p { margin-bottom: 12px; line-height: 1.5; }
+                    em { font-style: italic; color: #595959; }
+                    ul, ol { margin-left: 40px; }
+                    li { margin-bottom: 6px; }
+                </style>
+            `;
+    
             const articlesHtml = magazine.articles.map(article => `
-                <div style="page-break-before: always;">
+                <div>
                     <h2>${article.title}</h2>
-                    ${article.images.map(img =>
-                        `<p><img src="${img.url}" style="width: 500px; max-width: 100%; height: auto;" alt="${img.type}"></p>`
+                    ${(article.images || []).map(img =>
+                        img.url ? `<p><img src="${img.url}" style="width: 500px; max-width: 100%; height: auto;" alt="${img.type}"></p>` : ''
                     ).join('')}
                     ${markdownToHtml(article.content)}
                     <h3>Dicas e Macetes</h3>
                     ${markdownToHtml(article.tips)}
                 </div>
             `).join('');
-
+    
             const fullHtml = `
                 <!DOCTYPE html>
                 <html lang="pt-BR">
                 <head>
                     <meta charset="UTF-8">
                     <title>${magazine.title}</title>
+                    ${styles}
                 </head>
                 <body>
-                    <div style="text-align: center;">
+                    <div style="text-align: center; page-break-after: always;">
                         <h1>${magazine.title}</h1>
-                        <p>
-                            <img src="${magazine.coverImage}" style="width: 500px; max-width: 100%; height: auto;" alt="Capa da Revista">
-                        </p>
+                        ${magazine.coverImage ? `<p><img src="${magazine.coverImage}" style="width: 500px; max-width: 100%; height: auto;" alt="Capa da Revista"></p>` : ''}
                     </div>
                     ${articlesHtml}
                 </body>
@@ -385,9 +512,9 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 orientation: 'portrait',
                 margins: { top: 720, bottom: 720, left: 720, right: 720 }
             });
-
+    
             saveAs(docxBlob, `${magazine.title.replace(/\s+/g, '_')}.docx`);
-
+    
         } catch (error) {
             console.error("Erro ao gerar DOCX:", error);
         } finally {
@@ -565,16 +692,16 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 <button
                     onClick={handleDownloadDocx}
                     disabled={isDownloadingDocx}
-                    className="bg-blue-600 text-white font-bold py-2 px-6 hover:bg-blue-700 transition-colors duration-300 shadow-lg font-display text-sm disabled:bg-blue-800 disabled:cursor-wait"
+                    className="bg-blue-600 text-white font-bold py-2 px-6 hover:bg-blue-700 transition-colors duration-300 shadow-lg font-display text-sm disabled:bg-blue-800 disabled:cursor-wait flex items-center gap-2"
                 >
-                    {isDownloadingDocx ? 'Gerando DOCX...' : 'Baixar DOCX'}
+                    {isDownloadingDocx ? 'Gerando...' : 'Baixar DOCX'}
                 </button>
                 <button
                     onClick={handleDownloadPdf}
                     disabled={isDownloadingPdf}
-                    className="bg-green-600 text-white font-bold py-2 px-6 hover:bg-green-700 transition-colors duration-300 shadow-lg font-display text-sm disabled:bg-green-800 disabled:cursor-wait"
+                    className="bg-green-600 text-white font-bold py-2 px-6 hover:bg-green-700 transition-colors duration-300 shadow-lg font-display text-sm disabled:bg-green-800 disabled:cursor-wait flex items-center gap-2"
                 >
-                    {isDownloadingPdf ? 'Gerando PDF...' : 'Baixar PDF'}
+                    {isDownloadingPdf ? 'Gerando...' : 'Baixar PDF'}
                 </button>
             </div>
             

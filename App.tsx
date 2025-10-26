@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry } from './types';
+import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt } from './types';
 import * as geminiService from './services/geminiService';
 import MagazineViewer from './components/EbookViewer';
 import LoadingOverlay from './components/LoadingOverlay';
@@ -17,6 +17,7 @@ const API_CALL_DELAY = 4000; // 4 seconds, to stay within ~15 requests/minute ra
 const App: React.FC = () => {
     const [magazine, setMagazine] = useState<Magazine | null>(null);
     const [magazineStructure, setMagazineStructure] = useState<MagazineStructure | null>(null);
+    const [initialStructure, setInitialStructure] = useState<MagazineStructure | null>(null);
     const [generationStatus, setGenerationStatus] = useState<Record<string, GenerationState>>({});
     const [isLoading, setIsLoading] = useState(false);
     const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -66,6 +67,7 @@ const App: React.FC = () => {
         setError(null);
         setMagazine(null);
         setMagazineStructure(null);
+        setInitialStructure(null);
         setLoadingMessages([]);
         
         try {
@@ -73,6 +75,7 @@ const App: React.FC = () => {
             const structure = await geminiService.generateMagazineStructure(topic, isDeepMode);
             
             setMagazineStructure(structure);
+            setInitialStructure(structure);
 
             const status: Record<string, GenerationState> = { cover: 'pending' };
             structure.articles.forEach((_, index) => {
@@ -113,7 +116,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleGenerateCover = useCallback(async () => {
+    const handleGenerateCover = useCallback(async (prompt: string) => {
         if (!magazine || !magazineStructure) return;
 
         addLoadingMessage("Desenhando a capa em 16-bits...");
@@ -121,7 +124,7 @@ const App: React.FC = () => {
 
         try {
             const image = await geminiService.generateImage({
-                prompt: magazine.coverImagePrompt, 
+                prompt: prompt,
                 type: 'cover'
             });
             setMagazine(prev => prev ? { ...prev, coverImage: image } : null);
@@ -135,7 +138,12 @@ const App: React.FC = () => {
         }
     }, [magazine, magazineStructure, addLoadingMessage]);
 
-    const handleGenerateArticle = useCallback(async (articleIndex: number) => {
+    const handleGenerateArticle = useCallback(async (
+        articleIndex: number,
+        contentPrompt: string,
+        tipsPrompt: string,
+        imagePrompts: ArticleImagePrompt[]
+    ) => {
         if (!magazine || !magazineStructure) return;
 
         const articleId = `article-${articleIndex}`;
@@ -146,14 +154,14 @@ const App: React.FC = () => {
 
         try {
             addLoadingMessage(`- Gerando texto principal do artigo ${articleIndex + 1}...`);
-            const content = await geminiService.generateText(articleStruct.contentPrompt);
+            const content = await geminiService.generateText(contentPrompt);
             
             addLoadingMessage(`- Procurando dicas e segredos...`);
             await delay(API_CALL_DELAY);
-            const tips = await geminiService.generateText(articleStruct.tipsPrompt);
+            const tips = await geminiService.generateText(tipsPrompt);
             
             const images: string[] = [];
-            for (const [i, imgPrompt] of articleStruct.imagePrompts.entries()) {
+            for (const [i, imgPrompt] of imagePrompts.entries()) {
                 addLoadingMessage(`- Criando imagem ${i + 1}/3 do artigo ${articleIndex + 1}...`);
                 await delay(API_CALL_DELAY);
                 const imageUrl = await geminiService.generateImage({ prompt: imgPrompt.prompt, type: imgPrompt.type });
@@ -189,7 +197,7 @@ const App: React.FC = () => {
 
     const handleGenerateAll = useCallback(async () => {
         if (!magazine || !magazineStructure) return;
-
+    
         setIsGeneratingAll(true);
         setLoadingMessages([]);
         setError(null);
@@ -197,19 +205,21 @@ const App: React.FC = () => {
         addLoadingMessage("Iniciando a criação completa da revista...");
         await delay(1000);
     
-        await handleGenerateCover();
+        // Use the latest prompts from the structure
+        await handleGenerateCover(magazineStructure.coverImagePrompt);
     
         for (let i = 0; i < magazineStructure.articles.length; i++) {
             await delay(API_CALL_DELAY);
-            await handleGenerateArticle(i);
+            const articleStruct = magazineStructure.articles[i];
+            await handleGenerateArticle(i, articleStruct.contentPrompt, articleStruct.tipsPrompt, articleStruct.imagePrompts);
         }
         
         addLoadingMessage("Geração concluída. Verifique o resultado no compositor.");
         await delay(2000); // Give user time to read final message
         
         setIsGeneratingAll(false);
-
-    }, [magazine, magazineStructure, handleGenerateCover, handleGenerateArticle]);
+    
+    }, [magazine, magazineStructure, handleGenerateCover, handleGenerateArticle, addLoadingMessage]);
     
     const handleGenerate = (topic: string, type: CreationType, isDeepMode: boolean) => {
         let prompt = '';
@@ -244,6 +254,7 @@ const App: React.FC = () => {
     const handleBackToHub = () => {
         setMagazine(null);
         setMagazineStructure(null);
+        setInitialStructure(null);
         setGenerationStatus({});
         setError(null);
         setCurrentCreationType(null);
@@ -283,6 +294,81 @@ const App: React.FC = () => {
             return prevMagazine;
         });
     }, []);
+
+    const handlePromptUpdate = useCallback((path: string, newText: string) => {
+        const keys = path.split('.');
+        
+        // Update magazineStructure
+        setMagazineStructure(prev => {
+            if (!prev) return null;
+            const newStructure = JSON.parse(JSON.stringify(prev)); // Deep copy
+    
+            if (keys.length === 1 && keys[0] === 'coverImagePrompt') {
+                newStructure.coverImagePrompt = newText;
+            } else if (keys.length === 3 && keys[0] === 'articles') {
+                const index = parseInt(keys[1], 10);
+                const prop = keys[2] as 'contentPrompt' | 'tipsPrompt';
+                newStructure.articles[index][prop] = newText;
+            } else if (keys.length === 5 && keys[0] === 'articles' && keys[2] === 'imagePrompts' && keys[4] === 'prompt') {
+                const articleIndex = parseInt(keys[1], 10);
+                const imageIndex = parseInt(keys[3], 10);
+                newStructure.articles[articleIndex].imagePrompts[imageIndex].prompt = newText;
+            }
+    
+            return newStructure;
+        });
+    
+        // Update magazine skeleton prompts for consistency
+        setMagazine(prev => {
+            if (!prev) return null;
+            const newMagazine = JSON.parse(JSON.stringify(prev));
+    
+            if (keys.length === 1 && keys[0] === 'coverImagePrompt') {
+                newMagazine.coverImagePrompt = newText;
+            } else if (keys.length === 3 && keys[0] === 'articles' && keys[2] === 'contentPrompt') {
+                const index = parseInt(keys[1], 10);
+                newMagazine.articles[index].contentPrompt = newText;
+            } else if (keys.length === 5 && keys[0] === 'articles' && keys[2] === 'imagePrompts' && keys[4] === 'prompt') {
+                const articleIndex = parseInt(keys[1], 10);
+                const imageIndex = parseInt(keys[3], 10);
+                newMagazine.articles[articleIndex].images[imageIndex].prompt = newText;
+            }
+    
+            return newMagazine;
+        });
+    
+    }, []);
+
+    const handleResetArticlePrompts = useCallback((articleIndex: number) => {
+        if (!initialStructure || !magazineStructure) return;
+
+        const originalArticleStructure = initialStructure.articles[articleIndex];
+
+        // Update the editable magazineStructure
+        const newStructure = { ...magazineStructure };
+        newStructure.articles = [...magazineStructure.articles];
+        newStructure.articles[articleIndex] = originalArticleStructure;
+        setMagazineStructure(newStructure);
+
+        // Update the magazine skeleton for consistency
+        setMagazine(prev => {
+            if (!prev) return null;
+            const newMagazine = { ...prev };
+            newMagazine.articles = [...prev.articles];
+
+            const newArticle = { ...newMagazine.articles[articleIndex] };
+            newArticle.contentPrompt = originalArticleStructure.contentPrompt;
+            newArticle.images = newArticle.images.map((img, i) => ({
+                ...img,
+                prompt: originalArticleStructure.imagePrompts[i].prompt,
+                type: originalArticleStructure.imagePrompts[i].type,
+            }));
+            
+            newMagazine.articles[articleIndex] = newArticle;
+            return newMagazine;
+        });
+
+    }, [initialStructure, magazineStructure]);
 
     const handleImageRegenerate = useCallback(async (path: string, options: { quality: 'standard' | 'high'; modificationPrompt?: string; }) => {
         if (!magazine) return;
@@ -371,6 +457,7 @@ const App: React.FC = () => {
 
                 setMagazine(savedMagazine);
                 setMagazineStructure(savedStructure);
+                setInitialStructure(savedStructure);
 
                 // Load history
                 const allHistoriesJSON = localStorage.getItem(HISTORY_KEY);
@@ -482,6 +569,8 @@ const App: React.FC = () => {
                         onSaveToHistory={handleSaveToHistory}
                         onRevertToVersion={handleRevertToVersion}
                         onToggleHistoryPanel={() => setIsHistoryPanelOpen(prev => !prev)}
+                        onPromptUpdate={handlePromptUpdate}
+                        onResetArticlePrompts={handleResetArticlePrompts}
                     />
                 ) : null;
              case 'create':

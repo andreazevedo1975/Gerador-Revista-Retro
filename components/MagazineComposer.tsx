@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Magazine, MagazineStructure, GenerationState, ArticleImage, MagazineHistoryEntry } from '../types';
+import { Magazine, MagazineStructure, GenerationState, ArticleImage, MagazineHistoryEntry, ArticleImagePrompt } from '../types';
 import HistoryPanel from './HistoryPanel';
+import EditableText from './EditableText';
 
 interface MagazineComposerProps {
     magazine: Magazine;
@@ -8,17 +9,25 @@ interface MagazineComposerProps {
     generationStatus: Record<string, GenerationState>;
     history: MagazineHistoryEntry[];
     isHistoryPanelOpen: boolean;
-    onGenerateCover: () => void;
-    onGenerateArticle: (index: number) => void;
+    onGenerateCover: (prompt: string) => void;
+    onGenerateArticle: (index: number, contentPrompt: string, tipsPrompt: string, imagePrompts: ArticleImagePrompt[]) => void;
     onGenerateAll: () => void;
     onViewMagazine: () => void;
     onSaveToHistory: () => void;
     onRevertToVersion: (magazine: Magazine) => void;
     onToggleHistoryPanel: () => void;
+    onPromptUpdate: (path: string, newText: string) => void;
+    onResetArticlePrompts: (index: number) => void;
 }
 
 const Spinner: React.FC = () => (
     <div className="w-6 h-6 border-4 border-t-4 border-t-white border-gray-600/50 rounded-full animate-spin"></div>
+);
+
+const ResetIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 11.664 0M2.985 19.644L6.166 16.46m11.665-11.665h-4.992m0 0v4.992m0-4.993-3.181-3.183a8.25 8.25 0 0 0-11.664 0M21.015 4.356L17.834 7.54m-11.665 11.665l3.181 3.183" />
+    </svg>
 );
 
 const StatusIndicator: React.FC<{ status: GenerationState }> = ({ status }) => {
@@ -155,6 +164,8 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     onSaveToHistory,
     onRevertToVersion,
     onToggleHistoryPanel,
+    onPromptUpdate,
+    onResetArticlePrompts
 }) => {
     const [expandedArticleIndex, setExpandedArticleIndex] = useState<number | null>(null);
     const isAllDone = Object.values(generationStatus).every(s => s === 'done');
@@ -175,7 +186,7 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
             )}
             <header className="text-center">
                 <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Compositor da Revista</h2>
-                <p className="text-lg text-gray-400 leading-relaxed">Gere cada seção da sua revista. Quando tudo estiver pronto, clique em "Visualizar Revista".</p>
+                <p className="text-lg text-gray-400 leading-relaxed">Gere cada seção da sua revista. Você pode editar os prompts antes de gerar. Quando tudo estiver pronto, clique em "Visualizar Revista".</p>
                 <h3 className="text-2xl font-display mt-4 text-cyan-300 break-words">{`"${magazine.title}"`}</h3>
             </header>
 
@@ -214,15 +225,20 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <h4 className="text-2xl font-display text-cyan-400">Capa</h4>
-                            <p className="text-sm text-gray-400 italic max-w-md truncate" title={structure.coverImagePrompt}>
-                                Prompt: {structure.coverImagePrompt}
-                            </p>
+                            <p className="text-sm text-gray-400">Edite o prompt para refinar a arte da capa.</p>
                         </div>
                         <div className="flex items-center gap-4">
                             <StatusIndicator status={generationStatus.cover} />
-                            <GenerateButton status={generationStatus.cover} onClick={onGenerateCover} text="Gerar Capa" />
+                            <GenerateButton status={generationStatus.cover} onClick={() => onGenerateCover(structure.coverImagePrompt)} text="Gerar Capa" />
                         </div>
                     </div>
+                    <EditableText
+                        tag="div"
+                        text={structure.coverImagePrompt}
+                        onSave={(newText) => onPromptUpdate('coverImagePrompt', newText)}
+                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 mb-4"
+                        isTextArea
+                    />
                      <div className="flex justify-center items-center bg-gray-900/50 min-h-[320px] rounded">
                         {generationStatus.cover === 'generating' && <Spinner />}
                         {magazine.coverImage && <img src={magazine.coverImage} alt="Capa gerada" className="max-h-80 object-contain rounded" />}
@@ -249,42 +265,100 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <StatusIndicator status={articleStatus} />
-                                    {articleStatus === 'done' && (
-                                        <button
-                                            onClick={() => handleTogglePreview(index)}
-                                            className="text-cyan-300 hover:text-yellow-300 transition-colors font-display text-sm flex items-center gap-1 p-2 rounded-md hover:bg-cyan-500/10"
-                                            title={isExpanded ? 'Ocultar pré-visualização' : 'Pré-visualizar artigo'}
-                                        >
-                                            <span>{isExpanded ? 'Ocultar' : 'Visualizar'}</span>
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                            </svg>
-                                        </button>
-                                    )}
-                                    <GenerateButton status={articleStatus} onClick={() => onGenerateArticle(index)} text="Gerar Artigo" />
+                                    <button
+                                        onClick={() => handleTogglePreview(index)}
+                                        className="text-cyan-300 hover:text-yellow-300 transition-colors font-display text-sm flex items-center gap-1 p-2 rounded-md hover:bg-cyan-500/10"
+                                        title={isExpanded ? 'Ocultar detalhes' : 'Mostrar detalhes e prompts'}
+                                    >
+                                        <span>{isExpanded ? 'Ocultar' : 'Detalhes'}</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                        </svg>
+                                    </button>
+                                    <GenerateButton status={articleStatus} onClick={() => onGenerateArticle(index, article.contentPrompt, article.tipsPrompt, article.imagePrompts)} text="Gerar Artigo" />
                                 </div>
                             </div>
 
-                            {isExpanded && articleStatus === 'done' && (
+                            {isExpanded && (
                                 <div className="mt-4 pt-4 border-t border-cyan-500/20 animate-slide-down-fade-in">
-                                    <h5 className="font-display text-xl text-yellow-300 mb-4">Pré-visualização do Artigo</h5>
-                                    <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-                                        <ImageGalleryPreview images={generatedArticle.images} />
-                                        <div className="space-y-6">
-                                            <div>
-                                                <h6 className="font-display text-lg text-cyan-400 mb-2">Conteúdo do Artigo</h6>
-                                                <div className="bg-gray-800 p-4 rounded-md max-h-60 overflow-y-auto border border-gray-600">
-                                                    {renderMarkdown(generatedArticle.content || 'Nenhum conteúdo gerado.')}
-                                                </div>
-                                            </div>
-                                            <div className="mt-4 p-4 border-2 border-dashed border-yellow-400/50 bg-black/20 rounded-lg">
-                                                <h6 className="font-display text-lg text-yellow-300 mb-2">Dicas e Macetes</h6>
-                                                <div className="max-h-60 overflow-y-auto">
-                                                    {renderMarkdown(generatedArticle.tips || 'Nenhuma dica gerada.')}
-                                                </div>
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h5 className="font-display text-xl text-yellow-300">
+                                            Prompts de Geração
+                                        </h5>
+                                        <button
+                                            onClick={() => onResetArticlePrompts(index)}
+                                            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-gray-700"
+                                            title="Resetar prompts para o original"
+                                        >
+                                            <ResetIcon className="w-4 h-4" />
+                                            <span>Resetar Prompts</span>
+                                        </button>
+                                    </div>
+
+                                    {/* PROMPTS SECTION */}
+                                    <div className="space-y-4 mb-6">
+                                        <div>
+                                            <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt do Conteúdo</h6>
+                                            <EditableText
+                                                tag="div"
+                                                text={article.contentPrompt}
+                                                onSave={(newText) => onPromptUpdate(`articles.${index}.contentPrompt`, newText)}
+                                                className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700"
+                                                isTextArea
+                                            />
+                                        </div>
+                                        <div>
+                                            <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt de Dicas</h6>
+                                            <EditableText
+                                                tag="div"
+                                                text={article.tipsPrompt}
+                                                onSave={(newText) => onPromptUpdate(`articles.${index}.tipsPrompt`, newText)}
+                                                className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700"
+                                                isTextArea
+                                            />
+                                        </div>
+                                        <div>
+                                            <h6 className="font-display text-lg text-cyan-400 mb-2">Prompts de Imagem</h6>
+                                            <div className="space-y-3">
+                                                {article.imagePrompts.map((imgPrompt, imgIndex) => (
+                                                    <div key={imgIndex}>
+                                                        <label className="text-xs font-bold text-cyan-400 uppercase">{imgPrompt.type}</label>
+                                                        <EditableText
+                                                            tag="div"
+                                                            text={imgPrompt.prompt}
+                                                            onSave={(newText) => onPromptUpdate(`articles.${index}.imagePrompts.${imgIndex}.prompt`, newText)}
+                                                            className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700"
+                                                            isTextArea
+                                                        />
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* PREVIEW SECTION (only if done) */}
+                                    {articleStatus === 'done' && (
+                                        <div>
+                                            <h5 className="font-display text-xl text-yellow-300 mb-4">Pré-visualização do Artigo</h5>
+                                            <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                                                <ImageGalleryPreview images={generatedArticle.images} />
+                                                <div className="space-y-6">
+                                                    <div>
+                                                        <h6 className="font-display text-lg text-cyan-400 mb-2">Conteúdo do Artigo</h6>
+                                                        <div className="bg-gray-800 p-4 rounded-md max-h-60 overflow-y-auto border border-gray-600">
+                                                            {renderMarkdown(generatedArticle.content || 'Nenhum conteúdo gerado.')}
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-4 p-4 border-2 border-dashed border-yellow-400/50 bg-black/20 rounded-lg">
+                                                        <h6 className="font-display text-lg text-yellow-300 mb-2">Dicas e Macetes</h6>
+                                                        <div className="max-h-60 overflow-y-auto">
+                                                            {renderMarkdown(generatedArticle.tips || 'Nenhuma dica gerada.')}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
