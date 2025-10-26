@@ -66,7 +66,7 @@ const CreateByTopic: React.FC<CreateByTopicProps> = ({ type, onGenerate }) => {
     return (
         <div className="max-w-xl mx-auto bg-gray-800/50 p-8 rounded-lg shadow-2xl border border-fuchsia-500/30">
             <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-4 text-center">{title}</h2>
-            <p className="text-gray-400 mb-6 text-center">{description}</p>
+            <p className="text-lg text-gray-400 mb-6 text-center leading-relaxed">{description}</p>
             
             <form onSubmit={handleSubmit} className="space-y-6">
                 <input

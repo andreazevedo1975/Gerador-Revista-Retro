@@ -49,7 +49,7 @@ const structureSchema = {
         },
         articles: {
             type: Type.ARRAY,
-            description: "Um array de 3 a 5 artigos para a revista.",
+            description: "Um array de exatamente 5 artigos para a revista.",
             items: {
                 type: Type.OBJECT,
                 properties: {
@@ -99,7 +99,7 @@ export async function generateMagazineStructure(idea: string, isDeepMode: boolea
     let prompt = `
         Você é um editor de uma revista de videogames retrô dos anos 90 chamada "Retrô Gamer AI".
         Crie a estrutura para uma nova edição da revista com base na seguinte pauta: "${idea}".
-        A revista deve ter um tom divertido, informativo e nostálgico e ter entre 3 e 5 artigos.
+        A revista deve ter um tom divertido, informativo e nostálgico e conter exatamente 5 artigos.
         Para a capa, crie um prompt de imagem em inglês que seja extremamente detalhado e evocativo. O objetivo é gerar uma arte de capa espetacular no estilo das revistas de videogame dos anos 90. Instrua a IA de imagem a usar um estilo 'vibrant 16-bit pixel art' ou '90s Japanese box art'. O prompt deve focar em uma cena de ação dinâmica, com composição cinematográfica, iluminação dramática e cores vibrantes, capturando a essência do tópico principal.
         Para cada artigo, forneça um título, um prompt para gerar seu conteúdo, um prompt para uma seção de 'Dicas e Macetes', e um array com exatamente 3 prompts de imagem em inglês.
 
@@ -178,13 +178,15 @@ interface GenerateImageOptions {
     type: ImageType | 'cover';
     quality?: 'standard' | 'high';
     modificationPrompt?: string;
+    isRegeneration?: boolean;
 }
 
 export async function generateImage({
     prompt,
     type,
     quality = 'standard',
-    modificationPrompt = ''
+    modificationPrompt = '',
+    isRegeneration = false,
 }: GenerateImageOptions): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return withRetry(async () => {
@@ -192,11 +194,12 @@ export async function generateImage({
         
         let finalPrompt = prompt;
         
-        if (modificationPrompt.trim()) {
-            finalPrompt = `Based on the idea "${prompt}", generate a new 16-bit pixel art image with the following modification: "${modificationPrompt}". Maintain the original style.`;
-        } else {
-            // If no modification is given, ask for a variation to avoid identical images
-            finalPrompt = `Generate a new creative variation of this 16-bit pixel art image concept: "${prompt}".`;
+        if (isRegeneration) {
+            if (modificationPrompt.trim()) {
+                finalPrompt = `Based on the idea "${prompt}", generate a new 16-bit pixel art image with the following modification: "${modificationPrompt}". Maintain the original style.`;
+            } else {
+                finalPrompt = `Generate a new creative variation of this 16-bit pixel art image concept: "${prompt}".`;
+            }
         }
         
         if (quality === 'high') {

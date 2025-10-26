@@ -50,11 +50,11 @@ const Comments: React.FC<CommentsProps> = ({ articleId }) => {
                 {comments.length > 0 ? (
                     comments.map((comment, index) => (
                         <div key={index} className="bg-gray-900/50 p-4 rounded-md border border-cyan-500/20">
-                            <p className="text-gray-300 whitespace-pre-wrap">{comment}</p>
+                            <p className="text-base text-gray-300 whitespace-pre-wrap leading-relaxed">{comment}</p>
                         </div>
                     ))
                 ) : (
-                    <p className="text-gray-500 italic">Seja o primeiro a comentar!</p>
+                    <p className="text-base text-gray-500 italic">Seja o primeiro a comentar!</p>
                 )}
             </div>
 

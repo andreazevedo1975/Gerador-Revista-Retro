@@ -28,7 +28,7 @@ const renderReadingMarkdown = (markdown: string, theme: 'dark' | 'light') => {
         const parts = line.split(/(\*.*?\*)/g);
         return parts.map((part, i) =>
             part.startsWith('*') && part.endsWith('*') ? (
-                <em key={i} className={`not-italic ${theme === 'dark' ? 'text-yellow-400' : 'text-yellow-600'}`}>{part.slice(1, -1)}</em>
+                <em key={i} className={`italic ${theme === 'dark' ? 'text-yellow-400' : 'text-yellow-600'}`}>{part.slice(1, -1)}</em>
             ) : (
                 part
             )

@@ -25,7 +25,7 @@ const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadS
     return (
         <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-4">Central de Criação</h2>
-            <p className="text-gray-400 mb-10 max-w-2xl mx-auto">Escolha o tipo de pauta que você quer criar na sua próxima edição da Retrô Gamer AI.</p>
+            <p className="text-lg text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">Escolha o tipo de pauta que você quer criar na sua próxima edição da Retrô Gamer AI.</p>
             
             {hasSavedMagazine && (
                  <div className="mb-12 p-6 bg-gray-800/50 rounded-lg border border-fuchsia-500/30">
@@ -51,7 +51,7 @@ const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadS
                            <TopicIcon type={item.type} />
                         </div>
                         <h3 className="text-lg font-display text-cyan-300 mb-2 group-hover:text-yellow-300 transition-colors">{item.title}</h3>
-                        <p className="text-gray-400 text-sm leading-relaxed mt-auto flex-grow">{item.description}</p>
+                        <p className="text-base text-gray-400 leading-relaxed mt-auto flex-grow">{item.description}</p>
                     </button>
                 ))}
             </div>

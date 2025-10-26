@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Magazine, MagazineStructure, GenerationState, CreationType } from './types';
+import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry } from './types';
 import * as geminiService from './services/geminiService';
 import MagazineViewer from './components/EbookViewer';
 import LoadingOverlay from './components/LoadingOverlay';
@@ -10,32 +10,54 @@ import MagazineComposer from './components/MagazineComposer';
 type View = 'hub' | 'create' | 'composer' | 'magazine';
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+const SAVE_KEY = 'retroGamerSaveData';
+const HISTORY_KEY = 'retroGamerHistory';
+const API_CALL_DELAY = 4000; // 4 seconds, to stay within ~15 requests/minute rate limit.
 
 const App: React.FC = () => {
     const [magazine, setMagazine] = useState<Magazine | null>(null);
     const [magazineStructure, setMagazineStructure] = useState<MagazineStructure | null>(null);
     const [generationStatus, setGenerationStatus] = useState<Record<string, GenerationState>>({});
     const [isLoading, setIsLoading] = useState(false);
+    const [isGeneratingAll, setIsGeneratingAll] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [isGeneratingImage, setIsGeneratingImage] = useState<Record<string, boolean>>({});
     const [view, setView] = useState<View>('hub');
     const [currentCreationType, setCurrentCreationType] = useState<CreationType | null>(null);
+    const [history, setHistory] = useState<MagazineHistoryEntry[]>([]);
+    const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
 
     // Save magazine state to localStorage whenever it changes
     useEffect(() => {
         if (magazine && view !== 'hub') {
             try {
-                localStorage.setItem('retroGamerSavedMagazine', JSON.stringify(magazine));
+                // Save a "light" version without base64 image data to prevent quota errors.
+                const lightMagazine = {
+                    ...magazine,
+                    coverImage: '',
+                    articles: magazine.articles.map(article => ({
+                        ...article,
+                        images: article.images.map(image => ({
+                            ...image,
+                            url: '',
+                        })),
+                    })),
+                };
+                const saveData = {
+                    magazine: lightMagazine,
+                    magazineStructure: magazineStructure,
+                };
+                localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
             } catch (error) {
                 console.error("Falha ao salvar o estado da revista:", error);
             }
         }
-    }, [magazine, view]);
+    }, [magazine, magazineStructure, view]);
 
-    const addLoadingMessage = (message: string) => {
+    const addLoadingMessage = useCallback((message: string) => {
         setLoadingMessages(prev => [...prev, message]);
-    };
+    }, []);
 
     const handleGenerateStructure = async (topic: string, generationType: CreationType, isDeepMode: boolean) => {
         if (!topic.trim()) return;
@@ -58,7 +80,9 @@ const App: React.FC = () => {
             });
             setGenerationStatus(status);
 
+            const newId = `mag_${Date.now()}`;
             const skeletonMagazine: Magazine = {
+                id: newId,
                 title: structure.title,
                 coverImagePrompt: structure.coverImagePrompt,
                 coverImage: '',
@@ -77,6 +101,7 @@ const App: React.FC = () => {
                 })),
             };
             setMagazine(skeletonMagazine);
+            setHistory([]); // Reset history for new magazine
             setView('composer');
 
         } catch (err: any) {
@@ -91,6 +116,7 @@ const App: React.FC = () => {
     const handleGenerateCover = useCallback(async () => {
         if (!magazine || !magazineStructure) return;
 
+        addLoadingMessage("Desenhando a capa em 16-bits...");
         setGenerationStatus(prev => ({ ...prev, cover: 'generating' }));
 
         try {
@@ -100,12 +126,14 @@ const App: React.FC = () => {
             });
             setMagazine(prev => prev ? { ...prev, coverImage: image } : null);
             setGenerationStatus(prev => ({ ...prev, cover: 'done' }));
+            addLoadingMessage("✅ Capa finalizada com sucesso!");
         } catch (err: any) {
             console.error("Failed to generate cover:", err);
             setError(`Falha ao gerar a capa: ${err.message}`);
             setGenerationStatus(prev => ({ ...prev, cover: 'error' }));
+            addLoadingMessage(`❌ Erro ao criar a capa.`);
         }
-    }, [magazine, magazineStructure]);
+    }, [magazine, magazineStructure, addLoadingMessage]);
 
     const handleGenerateArticle = useCallback(async (articleIndex: number) => {
         if (!magazine || !magazineStructure) return;
@@ -113,16 +141,21 @@ const App: React.FC = () => {
         const articleId = `article-${articleIndex}`;
         const articleStruct = magazineStructure.articles[articleIndex];
 
+        addLoadingMessage(`Iniciando artigo: "${articleStruct.title}"...`);
         setGenerationStatus(prev => ({ ...prev, [articleId]: 'generating' }));
 
         try {
+            addLoadingMessage(`- Gerando texto principal do artigo ${articleIndex + 1}...`);
             const content = await geminiService.generateText(articleStruct.contentPrompt);
-            await delay(1000); // Add delay to space out API calls
+            
+            addLoadingMessage(`- Procurando dicas e segredos...`);
+            await delay(API_CALL_DELAY);
             const tips = await geminiService.generateText(articleStruct.tipsPrompt);
             
             const images: string[] = [];
-            for (const imgPrompt of articleStruct.imagePrompts) {
-                await delay(1000); // Add delay before each image generation
+            for (const [i, imgPrompt] of articleStruct.imagePrompts.entries()) {
+                addLoadingMessage(`- Criando imagem ${i + 1}/3 do artigo ${articleIndex + 1}...`);
+                await delay(API_CALL_DELAY);
                 const imageUrl = await geminiService.generateImage({ prompt: imgPrompt.prompt, type: imgPrompt.type });
                 images.push(imageUrl);
             }
@@ -143,23 +176,39 @@ const App: React.FC = () => {
             });
 
             setGenerationStatus(prev => ({ ...prev, [articleId]: 'done' }));
+            addLoadingMessage(`✅ Artigo "${articleStruct.title}" completo!`);
 
         } catch (err: any) {
             console.error(`Failed to generate article ${articleIndex}:`, err);
             setError(`Falha ao gerar o artigo "${articleStruct.title}": ${err.message}`);
             setGenerationStatus(prev => ({ ...prev, [articleId]: 'error' }));
+            addLoadingMessage(`❌ Erro ao gerar o artigo: "${articleStruct.title}".`);
         }
-    }, [magazine, magazineStructure]);
+    }, [magazine, magazineStructure, addLoadingMessage]);
 
 
     const handleGenerateAll = useCallback(async () => {
         if (!magazine || !magazineStructure) return;
 
+        setIsGeneratingAll(true);
+        setLoadingMessages([]);
+        setError(null);
+    
+        addLoadingMessage("Iniciando a criação completa da revista...");
+        await delay(1000);
+    
         await handleGenerateCover();
+    
         for (let i = 0; i < magazineStructure.articles.length; i++) {
-            await delay(1000); // Add delay between generating each article
+            await delay(API_CALL_DELAY);
             await handleGenerateArticle(i);
         }
+        
+        addLoadingMessage("Geração concluída. Verifique o resultado no compositor.");
+        await delay(2000); // Give user time to read final message
+        
+        setIsGeneratingAll(false);
+
     }, [magazine, magazineStructure, handleGenerateCover, handleGenerateArticle]);
     
     const handleGenerate = (topic: string, type: CreationType, isDeepMode: boolean) => {
@@ -248,7 +297,8 @@ const App: React.FC = () => {
                     prompt: magazine.coverImagePrompt, 
                     type: 'cover',
                     quality: options.quality,
-                    modificationPrompt: options.modificationPrompt
+                    modificationPrompt: options.modificationPrompt,
+                    isRegeneration: true,
                 });
             } else {
                 const parts = path.split('-');
@@ -263,7 +313,8 @@ const App: React.FC = () => {
                     prompt: imageInfo.prompt,
                     type: imageInfo.type,
                     quality: options.quality,
-                    modificationPrompt: options.modificationPrompt
+                    modificationPrompt: options.modificationPrompt,
+                    isRegeneration: true,
                 });
             }
             
@@ -295,7 +346,7 @@ const App: React.FC = () => {
     
     const hasSavedMagazine = (): boolean => {
         try {
-            return !!localStorage.getItem('retroGamerSavedMagazine');
+            return !!localStorage.getItem(SAVE_KEY);
         } catch (error) {
             console.error("Não foi possível verificar a revista salva:", error);
             return false;
@@ -304,21 +355,43 @@ const App: React.FC = () => {
 
     const handleLoadSavedMagazine = () => {
         try {
-            const savedMagazineJSON = localStorage.getItem('retroGamerSavedMagazine');
-            if (savedMagazineJSON) {
-                const savedMagazine: Magazine = JSON.parse(savedMagazineJSON);
-                setMagazine(savedMagazine);
+            const savedDataJSON = localStorage.getItem(SAVE_KEY);
+            if (savedDataJSON) {
+                let { magazine: savedMagazine, magazineStructure: savedStructure } = JSON.parse(savedDataJSON);
 
-                // Since we are loading a complete magazine, all generation statuses are 'done'.
-                const status: Record<string, GenerationState> = { cover: 'done' };
-                savedMagazine.articles.forEach((_, index) => {
-                    status[`article-${index}`] = 'done';
+                if (!savedMagazine || !savedStructure) {
+                    setError("Não foi possível carregar a revista salva. O arquivo pode estar corrompido.");
+                    localStorage.removeItem(SAVE_KEY);
+                    return;
+                }
+                
+                if (!savedMagazine.id) {
+                    savedMagazine.id = `mag_${Date.now()}`;
+                }
+
+                setMagazine(savedMagazine);
+                setMagazineStructure(savedStructure);
+
+                // Load history
+                const allHistoriesJSON = localStorage.getItem(HISTORY_KEY);
+                if (allHistoriesJSON) {
+                    const allHistories = JSON.parse(allHistoriesJSON);
+                    const loadedHistory = allHistories[savedMagazine.id] || [];
+                    setHistory(loadedHistory);
+                } else {
+                    setHistory([]);
+                }
+
+
+                // Reconstruct status to allow regeneration of missing images
+                const status: Record<string, GenerationState> = { cover: 'pending' };
+                savedMagazine.articles.forEach((_: any, index: number) => {
+                    status[`article-${index}`] = 'pending';
                 });
                 setGenerationStatus(status);
                 
-                // Go straight to the viewer as the structure isn't saved.
-                setMagazineStructure(null); 
-                setView('magazine');
+                // Go to the composer to finish generating
+                setView('composer');
             } else {
                 setError("Nenhuma revista salva foi encontrada.");
             }
@@ -328,8 +401,55 @@ const App: React.FC = () => {
         }
     };
 
+    const handleSaveToHistory = useCallback(() => {
+        if (!magazine) return;
+    
+        const lightMagazine = {
+            ...magazine,
+            coverImage: '',
+            articles: magazine.articles.map(article => ({
+                ...article,
+                images: article.images.map(image => ({ ...image, url: '' })),
+            })),
+        };
+
+        const newEntry: MagazineHistoryEntry = {
+            timestamp: Date.now(),
+            magazine: lightMagazine,
+        };
+    
+        const updatedHistory = [newEntry, ...history];
+        // Optional: Cap history size
+        // if (updatedHistory.length > 20) {
+        //     updatedHistory.pop();
+        // }
+        setHistory(updatedHistory);
+    
+        try {
+            const allHistoriesJSON = localStorage.getItem(HISTORY_KEY);
+            const allHistories = allHistoriesJSON ? JSON.parse(allHistoriesJSON) : {};
+            allHistories[magazine.id] = updatedHistory;
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(allHistories));
+        } catch (error) {
+            console.error("Falha ao salvar o histórico:", error);
+        }
+    }, [magazine, history]);
+    
+    const handleRevertToVersion = (versionMagazine: Magazine) => {
+        setMagazine(versionMagazine);
+    
+        const status: Record<string, GenerationState> = { cover: 'pending' };
+        versionMagazine.articles.forEach((_, index: number) => {
+            status[`article-${index}`] = 'pending';
+        });
+        setGenerationStatus(status);
+        
+        setIsHistoryPanelOpen(false);
+    };
+
+
     const renderContent = () => {
-        if (error && !isLoading) {
+        if (error && !isLoading && !isGeneratingAll) {
              return (
                 <div className="max-w-3xl mx-auto bg-red-900/50 p-4 mb-6 rounded-lg border border-red-500 text-center">
                     <p className="text-red-300">{error}</p>
@@ -353,10 +473,15 @@ const App: React.FC = () => {
                         magazine={magazine}
                         structure={magazineStructure}
                         generationStatus={generationStatus}
+                        history={history}
+                        isHistoryPanelOpen={isHistoryPanelOpen}
                         onGenerateCover={handleGenerateCover}
                         onGenerateArticle={handleGenerateArticle}
                         onGenerateAll={handleGenerateAll}
                         onViewMagazine={handleViewMagazine}
+                        onSaveToHistory={handleSaveToHistory}
+                        onRevertToVersion={handleRevertToVersion}
+                        onToggleHistoryPanel={() => setIsHistoryPanelOpen(prev => !prev)}
                     />
                 ) : null;
              case 'create':
@@ -373,7 +498,7 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
-            {isLoading && <LoadingOverlay messages={loadingMessages} />}
+            {(isLoading || isGeneratingAll) && <LoadingOverlay messages={loadingMessages} />}
             <header className="bg-gray-800/50 backdrop-blur-sm shadow-lg border-b border-fuchsia-500/30 p-4 sticky top-0 z-20">
                 <div className="container mx-auto flex justify-center items-center">
                     <div className="flex items-center gap-4 relative w-full justify-center">

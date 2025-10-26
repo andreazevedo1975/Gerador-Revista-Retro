@@ -35,8 +35,14 @@ export interface Article extends Omit<ArticleStructure, 'imagePrompts' | 'tipsPr
 }
 
 export interface Magazine {
+    id: string;
     title: string;
     coverImage: string; // base64 image data
     coverImagePrompt: string;
     articles: Article[];
+}
+
+export interface MagazineHistoryEntry {
+    timestamp: number;
+    magazine: Magazine;
 }

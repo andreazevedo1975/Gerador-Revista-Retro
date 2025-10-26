@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
-import { Magazine, MagazineStructure, GenerationState, ArticleImage } from '../types';
+import { Magazine, MagazineStructure, GenerationState, ArticleImage, MagazineHistoryEntry } from '../types';
+import HistoryPanel from './HistoryPanel';
 
 interface MagazineComposerProps {
     magazine: Magazine;
     structure: MagazineStructure;
     generationStatus: Record<string, GenerationState>;
+    history: MagazineHistoryEntry[];
+    isHistoryPanelOpen: boolean;
     onGenerateCover: () => void;
     onGenerateArticle: (index: number) => void;
     onGenerateAll: () => void;
     onViewMagazine: () => void;
+    onSaveToHistory: () => void;
+    onRevertToVersion: (magazine: Magazine) => void;
+    onToggleHistoryPanel: () => void;
 }
 
 const Spinner: React.FC = () => (
@@ -62,7 +68,7 @@ const renderMarkdown = (markdown: string) => {
         const parts = line.split(/(\*.*?\*)/g);
         return parts.map((part, i) =>
             part.startsWith('*') && part.endsWith('*') ? (
-                <em key={i} className="text-yellow-400 not-italic">{part.slice(1, -1)}</em>
+                <em key={i} className="text-yellow-400 italic">{part.slice(1, -1)}</em>
             ) : (
                 part
             )
@@ -74,7 +80,7 @@ const renderMarkdown = (markdown: string) => {
             const ListTag = currentListType === 'ol' ? 'ol' : 'ul';
             const listStyle = currentListType === 'ol' ? 'list-decimal' : 'list-disc';
             elements.push(
-                <ListTag key={`list-${elements.length}`} className={`${listStyle} list-inside space-y-2 mb-4 pl-4 text-gray-300 leading-loose`}>
+                <ListTag key={`list-${elements.length}`} className={`${listStyle} list-inside space-y-2 mb-4 pl-4 text-gray-300 leading-loose text-base`}>
                     {listItems.map((item, i) => <li key={i}>{renderLine(item)}</li>)}
                 </ListTag>
             );
@@ -102,7 +108,7 @@ const renderMarkdown = (markdown: string) => {
         } else {
             flushList();
             if (trimmedLine !== '') {
-                elements.push(<p key={index} className="mb-4 text-gray-300 leading-loose">{renderLine(line)}</p>);
+                elements.push(<p key={index} className="mb-4 text-gray-300 leading-loose text-base">{renderLine(line)}</p>);
             }
         }
     });
@@ -140,10 +146,15 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     magazine,
     structure,
     generationStatus,
+    history,
+    isHistoryPanelOpen,
     onGenerateCover,
     onGenerateArticle,
     onGenerateAll,
     onViewMagazine,
+    onSaveToHistory,
+    onRevertToVersion,
+    onToggleHistoryPanel,
 }) => {
     const [expandedArticleIndex, setExpandedArticleIndex] = useState<number | null>(null);
     const isAllDone = Object.values(generationStatus).every(s => s === 'done');
@@ -155,24 +166,43 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
+             {isHistoryPanelOpen && (
+                <HistoryPanel
+                    history={history}
+                    onRevert={onRevertToVersion}
+                    onClose={onToggleHistoryPanel}
+                />
+            )}
             <header className="text-center">
                 <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Compositor da Revista</h2>
-                <p className="text-gray-400">Gere cada seção da sua revista. Quando tudo estiver pronto, clique em "Visualizar Revista".</p>
-                <h3 className="text-2xl font-bold mt-4 text-cyan-300 break-words">{`"${magazine.title}"`}</h3>
+                <p className="text-lg text-gray-400 leading-relaxed">Gere cada seção da sua revista. Quando tudo estiver pronto, clique em "Visualizar Revista".</p>
+                <h3 className="text-2xl font-display mt-4 text-cyan-300 break-words">{`"${magazine.title}"`}</h3>
             </header>
 
-            <div className="flex justify-center items-center gap-4 p-4 bg-gray-800/50 rounded-lg">
+            <div className="flex justify-center items-center gap-2 flex-wrap p-4 bg-gray-800/50 rounded-lg">
+                 <button
+                    onClick={onSaveToHistory}
+                    className="bg-blue-600 text-white font-bold py-3 px-6 hover:bg-blue-700 transition-colors duration-300 shadow-lg font-display text-sm"
+                >
+                    Salvar Versão
+                </button>
+                 <button
+                    onClick={onToggleHistoryPanel}
+                    className="bg-gray-700 text-white font-bold py-3 px-6 hover:bg-gray-600 transition-colors duration-300 shadow-lg font-display text-sm"
+                >
+                    Histórico ({history.length})
+                </button>
                 <button
                     onClick={onGenerateAll}
                     disabled={isGeneratingAnything || isAllDone}
-                    className="bg-fuchsia-600 text-white font-bold py-3 px-8 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-base"
+                    className="bg-fuchsia-600 text-white font-bold py-3 px-6 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
                 >
                     Gerar Tudo
                 </button>
                  <button
                     onClick={onViewMagazine}
                     disabled={!isAllDone}
-                    className="bg-green-600 text-white font-bold py-3 px-8 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-base"
+                    className="bg-green-600 text-white font-bold py-3 px-6 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
                 >
                     Visualizar Revista
                 </button>

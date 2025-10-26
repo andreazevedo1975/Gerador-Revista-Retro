@@ -27,7 +27,7 @@ const renderMarkdown = (markdown: string) => {
         const parts = line.split(/(\*.*?\*)/g);
         return parts.map((part, i) =>
             part.startsWith('*') && part.endsWith('*') ? (
-                <em key={i} className="text-yellow-400 not-italic">{part.slice(1, -1)}</em>
+                <em key={i} className="text-yellow-400 italic">{part.slice(1, -1)}</em>
             ) : (
                 part
             )
@@ -39,7 +39,7 @@ const renderMarkdown = (markdown: string) => {
             const ListTag = currentListType === 'ol' ? 'ol' : 'ul';
             const listStyle = currentListType === 'ol' ? 'list-decimal' : 'list-disc';
             elements.push(
-                <ListTag key={`list-${elements.length}`} className={`${listStyle} list-inside space-y-2 mb-4 pl-4 text-gray-300 leading-loose`}>
+                <ListTag key={`list-${elements.length}`} className={`${listStyle} list-inside space-y-2 mb-4 pl-4 text-gray-300 leading-loose text-lg`}>
                     {listItems.map((item, i) => <li key={i}>{renderLine(item)}</li>)}
                 </ListTag>
             );
@@ -71,7 +71,7 @@ const renderMarkdown = (markdown: string) => {
         } else {
             flushList();
             if (trimmedLine !== '') {
-                elements.push(<p key={index} className="mb-4 text-gray-300 leading-loose">{renderLine(line)}</p>);
+                elements.push(<p key={index} className="mb-4 text-gray-300 leading-loose text-lg">{renderLine(line)}</p>);
             }
         }
     });
