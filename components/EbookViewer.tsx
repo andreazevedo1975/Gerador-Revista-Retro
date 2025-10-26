@@ -84,13 +84,22 @@ const ImageGallery: React.FC<{
     images: ArticleImage[];
     onRegenerate: (path: string, options: { quality: 'standard' | 'high'; modificationPrompt?: string; }) => void;
     isGeneratingImage: Record<string, boolean>;
-}> = ({ images, onRegenerate, isGeneratingImage }) => {
+    articleTitle: string;
+    onDownloadImage: (imageUrl: string, articleTitle: string, imageType: string) => void;
+}> = ({ images, onRegenerate, isGeneratingImage, articleTitle, onDownloadImage }) => {
     const gameplay = images.find(img => img.type === 'gameplay');
     const others = images.filter(img => img.type !== 'gameplay');
 
     const ImageBox: React.FC<{image: ArticleImage}> = ({ image }) => (
         <div className="relative w-full h-full group border-2 border-cyan-500 shadow-lg shadow-cyan-500/20">
             <img src={image.url} alt={`Ilustração do tipo ${image.type}`} className="w-full h-full object-cover" />
+            <button
+                onClick={() => onDownloadImage(image.url, articleTitle, image.type)}
+                className="absolute top-2 right-2 bg-gray-700/50 p-2 rounded-full text-gray-300 hover:text-white hover:bg-purple-600 transition-all duration-300 opacity-0 group-hover:opacity-100 focus:opacity-100 z-10"
+                title={`Baixar imagem (${image.type})`}
+            >
+                <DownloadIcon className="w-5 h-5" />
+            </button>
             <RegenerateImageButton 
                 imageId={image.id}
                 onRegenerate={onRegenerate}
@@ -522,6 +531,93 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
         }
     };
 
+    const handleDownloadSection = (markdown: string, articleTitle: string, sectionTitle: string) => {
+        const markdownToHtml = (md: string): string => {
+            const lines = md.split('\n');
+            let html = '';
+            let currentListType: 'ul' | 'ol' | null = null;
+    
+            const processLine = (line: string) => line.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+            const flushList = () => {
+                if (currentListType) {
+                    html += `</${currentListType}>`;
+                    currentListType = null;
+                }
+            };
+    
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                const isUnorderedItem = trimmedLine.startsWith('- ');
+                const isOrderedItem = /^\d+\.\s/.test(trimmedLine);
+    
+                if (trimmedLine.startsWith('### ')) {
+                    flushList();
+                    html += `<h3>${processLine(trimmedLine.substring(4))}</h3>`;
+                } else if (isUnorderedItem) {
+                    if (currentListType === 'ol') flushList();
+                    if (!currentListType) {
+                        html += '<ul>';
+                        currentListType = 'ul';
+                    }
+                    html += `<li>${processLine(trimmedLine.substring(2).trim())}</li>`;
+                } else if (isOrderedItem) {
+                    if (currentListType === 'ul') flushList();
+                    if (!currentListType) {
+                        html += '<ol>';
+                        currentListType = 'ol';
+                    }
+                    html += `<li>${processLine(trimmedLine.substring(trimmedLine.indexOf(' ') + 1).trim())}</li>`;
+                } else {
+                    flushList();
+                    if (trimmedLine !== '') {
+                        html += `<p>${processLine(trimmedLine)}</p>`;
+                    }
+                }
+            });
+    
+            flushList();
+            return html;
+        };
+        
+        const sectionHtml = markdownToHtml(markdown);
+        const fullHtml = `
+            <!DOCTYPE html>
+            <html lang="pt-BR">
+            <head>
+                <meta charset="UTF-8">
+                <title>${sectionTitle} - ${articleTitle}</title>
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #fdfdfd; max-width: 800px; margin: 0 auto; padding: 2rem; }
+                    h1 { font-size: 2em; color: #000; }
+                    h2 { font-size: 1.2em; color: #555; margin-bottom: 2rem; }
+                    h3 { font-size: 1.5em; margin-top: 2rem; margin-bottom: 1rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+                    em { color: #8A2BE2; font-style: normal; font-weight: bold; }
+                    ul, ol { padding-left: 20px; }
+                    li { margin-bottom: 0.5rem; }
+                    p { margin-bottom: 1rem; }
+                </style>
+            </head>
+            <body>
+                <h1>${sectionTitle}</h1>
+                <h2>Do artigo: "${articleTitle}"</h2>
+                <hr />
+                ${sectionHtml}
+            </body>
+            </html>
+        `;
+
+        const blob = new Blob([fullHtml], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const fileName = `${articleTitle.replace(/[^a-z0-9]/gi, '_')}_${sectionTitle.replace(/[^a-z0-9]/gi, '_')}.html`.toLowerCase();
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
 
     const handleDownloadArticle = (article: Article) => {
         const markdownToHtml = (markdown: string): string => {
@@ -628,6 +724,19 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    };
+
+    const handleDownloadImage = (imageUrl: string, articleTitle: string, imageType: string) => {
+        const safeMagazineTitle = magazine.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeArticleTitle = articleTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const fileName = `${safeMagazineTitle}_${safeArticleTitle}_${imageType}.jpg`;
+        
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const handleShare = async () => {
@@ -765,16 +874,27 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                                         images={article.images}
                                         onRegenerate={onImageRegenerate}
                                         isGeneratingImage={isGeneratingImage}
+                                        articleTitle={article.title}
+                                        onDownloadImage={handleDownloadImage}
                                     />
-                                    <EditableText
-                                        tag="div"
-                                        text={article.content}
-                                        onSave={(newText) => onTextUpdate(`${articlePath}.content`, newText)}
-                                        className="text-lg"
-                                        renderFunction={renderMarkdown}
-                                        isTextArea
-                                    />
-                                    <div className="mt-8 p-6 border-2 border-dashed border-yellow-400 bg-black/20 rounded-lg">
+                                    <div className="relative group">
+                                        <EditableText
+                                            tag="div"
+                                            text={article.content}
+                                            onSave={(newText) => onTextUpdate(`${articlePath}.content`, newText)}
+                                            className="text-lg"
+                                            renderFunction={renderMarkdown}
+                                            isTextArea
+                                        />
+                                        <button 
+                                            onClick={() => handleDownloadSection(article.content, article.title, 'Artigo Principal')}
+                                            className="absolute top-2 right-2 bg-gray-700/50 p-2 rounded-full text-gray-300 hover:text-white hover:bg-purple-600 transition-all duration-300 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                            title={`Baixar conteúdo de "${article.title}"`}
+                                        >
+                                            <DownloadIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    <div className="mt-8 p-6 border-2 border-dashed border-yellow-400 bg-black/20 rounded-lg relative group">
                                         <h4 className="font-display text-xl text-yellow-300 mb-4">Dicas e Macetes</h4>
                                         <EditableText
                                             tag="div"
@@ -784,6 +904,13 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                                             renderFunction={renderMarkdown}
                                             isTextArea
                                         />
+                                        <button 
+                                            onClick={() => handleDownloadSection(article.tips, article.title, 'Dicas e Macetes')}
+                                            className="absolute top-4 right-4 bg-gray-700/50 p-2 rounded-full text-gray-300 hover:text-white hover:bg-purple-600 transition-all duration-300 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                            title={`Baixar Dicas de "${article.title}"`}
+                                        >
+                                            <DownloadIcon className="w-5 h-5" />
+                                        </button>
                                     </div>
                                     <Comments articleId={article.id} />
                                 </section>

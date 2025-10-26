@@ -71,6 +71,15 @@ const TopicIcon: React.FC<TopicIconProps> = ({ type }) => {
                     <g fill="#4B5563"><path d="M25 31a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M35 31a3 3 0 1 0 6 0a3 3 0 1 0-6 0"/></g>
                 </svg>
             );
+        case 'cover_choice':
+            return (
+                <svg {...iconProps}>
+                    <g fill="#A5B4FC"><path d="M12 8h40v48H12z"/></g>
+                    <g fill="#818CF8"><path d="M16 12h32v28H16z"/></g>
+                    <g fill="#FBBF24"><path d="M32 44l-4 8h8z M24 50l8-2 8 2v-6h-16z M28 42l4-8 4 8z"/></g>
+                    <g fill="#F59E0B"><path d="M32 44l4 6v-6z M32 50l4-2v2z"/></g>
+                </svg>
+            );
         default:
             return (
                 <svg {...iconProps} className="w-12 h-12 text-gray-700">

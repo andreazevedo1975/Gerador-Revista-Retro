@@ -42,6 +42,11 @@ const config: Record<CreationType, {
         description: "Digite o tema para a revista de trilhas sonoras.",
         placeholder: "Ex: Nobuo Uematsu, O chip de som do SNES..."
     },
+    cover_choice: {
+        title: "Escolha de Capa da Edição",
+        description: "Descreva o tema para a análise das capas. A IA irá gerar uma revista comparando-as e elegendo a melhor.",
+        placeholder: "Ex: As capas da série Final Fantasy, Jogos de terror do PS1..."
+    },
 };
 
 const InfoIcon: React.FC = () => (

@@ -19,6 +19,7 @@ const creationTypes: {
     { type: 'developer', title: "Lendas do Desenvolvimento", description: "Explore a história de um estúdio ou criador icônico que moldou o universo dos games." },
     { type: 'rivalry', title: "Rivalidades Históricas", description: "Uma revista sobre as grandes batalhas da indústria: consoles, jogos ou empresas." },
     { type: 'soundtrack', title: "O Som dos Games", description: "Mergulhe nas trilhas sonoras que marcaram época. Uma edição sobre os compositores e a tecnologia musical." },
+    { type: 'cover_choice', title: "Escolha de Capa da Edição", description: "Uma edição que analisa capas de jogos icônicos, com a IA ajudando a eleger a melhor." },
 ];
 
 const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadSavedMagazine, hasSavedMagazine }) => {

@@ -142,7 +142,8 @@ const App: React.FC = () => {
         articleIndex: number,
         contentPrompt: string,
         tipsPrompt: string,
-        imagePrompts: ArticleImagePrompt[]
+        imagePrompts: ArticleImagePrompt[],
+        quality: 'standard' | 'high' = 'standard'
     ) => {
         if (!magazine || !magazineStructure) return;
 
@@ -164,7 +165,7 @@ const App: React.FC = () => {
             for (const [i, imgPrompt] of imagePrompts.entries()) {
                 addLoadingMessage(`- Criando imagem ${i + 1}/3 do artigo ${articleIndex + 1}...`);
                 await delay(API_CALL_DELAY);
-                const imageUrl = await geminiService.generateImage({ prompt: imgPrompt.prompt, type: imgPrompt.type });
+                const imageUrl = await geminiService.generateImage({ prompt: imgPrompt.prompt, type: imgPrompt.type, quality });
                 images.push(imageUrl);
             }
 
@@ -241,6 +242,9 @@ const App: React.FC = () => {
                 break;
             case 'soundtrack':
                 prompt = `Crie uma revista sobre a música e o som dos games, com foco em ${topic}. Analise as composições, a tecnologia de som da época e o impacto emocional das trilhas sonoras.`;
+                break;
+            case 'cover_choice':
+                prompt = `Crie uma revista completa sobre capas de jogos com o tema "${topic}". A revista deve analisar o design, o impacto e a arte de várias capas icônicas, comparando-as e, em um artigo final, argumentar qual é a melhor e por quê.`;
                 break;
         }
         handleGenerateStructure(prompt, type, isDeepMode);
@@ -338,6 +342,25 @@ const App: React.FC = () => {
         });
     
     }, []);
+
+    const handleResetCoverPrompt = useCallback(() => {
+        if (!initialStructure || !magazineStructure) return;
+
+        const originalCoverPrompt = initialStructure.coverImagePrompt;
+
+        // Update the editable magazineStructure
+        setMagazineStructure(prev => {
+            if (!prev) return null;
+            return { ...prev, coverImagePrompt: originalCoverPrompt };
+        });
+
+        // Update the magazine skeleton for consistency
+        setMagazine(prev => {
+            if (!prev) return null;
+            return { ...prev, coverImagePrompt: originalCoverPrompt };
+        });
+
+    }, [initialStructure, magazineStructure]);
 
     const handleResetArticlePrompts = useCallback((articleIndex: number) => {
         if (!initialStructure || !magazineStructure) return;
@@ -570,6 +593,7 @@ const App: React.FC = () => {
                         onRevertToVersion={handleRevertToVersion}
                         onToggleHistoryPanel={() => setIsHistoryPanelOpen(prev => !prev)}
                         onPromptUpdate={handlePromptUpdate}
+                        onResetCoverPrompt={handleResetCoverPrompt}
                         onResetArticlePrompts={handleResetArticlePrompts}
                     />
                 ) : null;

@@ -10,13 +10,14 @@ interface MagazineComposerProps {
     history: MagazineHistoryEntry[];
     isHistoryPanelOpen: boolean;
     onGenerateCover: (prompt: string) => void;
-    onGenerateArticle: (index: number, contentPrompt: string, tipsPrompt: string, imagePrompts: ArticleImagePrompt[]) => void;
+    onGenerateArticle: (index: number, contentPrompt: string, tipsPrompt: string, imagePrompts: ArticleImagePrompt[], quality: 'standard' | 'high') => void;
     onGenerateAll: () => void;
     onViewMagazine: () => void;
     onSaveToHistory: () => void;
     onRevertToVersion: (magazine: Magazine) => void;
     onToggleHistoryPanel: () => void;
     onPromptUpdate: (path: string, newText: string) => void;
+    onResetCoverPrompt: () => void;
     onResetArticlePrompts: (index: number) => void;
 }
 
@@ -26,7 +27,7 @@ const Spinner: React.FC = () => (
 
 const ResetIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 11.664 0M2.985 19.644L6.166 16.46m11.665-11.665h-4.992m0 0v4.992m0-4.993-3.181-3.183a8.25 8.25 0 0 0-11.664 0M21.015 4.356L17.834 7.54m-11.665 11.665l3.181 3.183" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 11.664 0M2.985 19.644L6.166 16.46m11.665-11.665h-4.992m0 0v4.992m0-4.993-3.181-3.183a8.25 8.25 0 0 0 -11.664 0M21.015 4.356L17.834 7.54m-11.665 11.665l3.181 3.183" />
     </svg>
 );
 
@@ -47,13 +48,24 @@ const StatusIndicator: React.FC<{ status: GenerationState }> = ({ status }) => {
 
 const GenerateButton: React.FC<{ status: GenerationState, onClick: () => void, text: string }> = ({ status, onClick, text }) => {
     const isError = status === 'error';
-    const buttonText = isError ? "Tentar Novamente" : text;
-    const isDisabled = status === 'generating' || status === 'done';
+    const isDone = status === 'done';
+    const isDisabled = status === 'generating';
 
-    const baseClasses = "font-bold py-2 px-5 transition-colors duration-300 shadow-lg font-display text-sm w-44 flex justify-center items-center h-10 rounded-md";
+    let buttonText = text;
     let colorClasses = "bg-cyan-600 text-white hover:bg-cyan-700";
-    if (isError) colorClasses = "bg-red-600 text-white hover:bg-red-700";
-    if (isDisabled) colorClasses += " disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed";
+
+    if (isError) {
+        buttonText = "Tentar Novamente";
+        colorClasses = "bg-red-600 text-white hover:bg-red-700";
+    } else if (isDone) {
+        buttonText = "Gerar Novamente";
+        colorClasses = "bg-purple-600 text-white hover:bg-purple-700";
+    }
+    
+    const baseClasses = "font-bold py-2 px-5 transition-colors duration-300 shadow-lg font-display text-sm w-44 flex justify-center items-center h-10 rounded-md";
+    if (isDisabled) {
+        colorClasses += " disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed";
+    }
 
     return (
         <button
@@ -165,14 +177,23 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     onRevertToVersion,
     onToggleHistoryPanel,
     onPromptUpdate,
+    onResetCoverPrompt,
     onResetArticlePrompts
 }) => {
     const [expandedArticleIndex, setExpandedArticleIndex] = useState<number | null>(null);
+    const [qualitySelection, setQualitySelection] = useState<{ index: number; contentPrompt: string; tipsPrompt: string; imagePrompts: ArticleImagePrompt[] } | null>(null);
     const isAllDone = Object.values(generationStatus).every(s => s === 'done');
     const isGeneratingAnything = Object.values(generationStatus).some(s => s === 'generating');
 
     const handleTogglePreview = (index: number) => {
         setExpandedArticleIndex(prevIndex => (prevIndex === index ? null : index));
+    };
+
+    const handleConfirmGeneration = (quality: 'standard' | 'high') => {
+        if (!qualitySelection) return;
+        const { index, contentPrompt, tipsPrompt, imagePrompts } = qualitySelection;
+        onGenerateArticle(index, contentPrompt, tipsPrompt, imagePrompts, quality);
+        setQualitySelection(null);
     };
 
     return (
@@ -183,6 +204,31 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                     onRevert={onRevertToVersion}
                     onClose={onToggleHistoryPanel}
                 />
+            )}
+            {qualitySelection && (
+                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setQualitySelection(null)}>
+                    <div className="bg-gray-800 rounded-lg p-6 border border-fuchsia-500/30 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-2xl font-display text-yellow-300 mb-2 text-center">Escolha a Qualidade</h3>
+                        <p className="text-gray-400 text-center mb-6">"Alta Qualidade" usa um modelo mais avançado para imagens com mais detalhes, mas a geração pode ser mais lenta.</p>
+                        <div className="flex flex-col sm:flex-row justify-center gap-4">
+                            <button 
+                                onClick={() => handleConfirmGeneration('standard')} 
+                                className="flex-1 text-center px-4 py-3 text-lg text-gray-200 bg-gray-700 hover:bg-fuchsia-600 rounded-md transition-colors font-display"
+                            >
+                                Padrão
+                            </button>
+                            <button 
+                                onClick={() => handleConfirmGeneration('high')} 
+                                className="flex-1 text-center px-4 py-3 text-lg text-gray-200 bg-gray-700 hover:bg-fuchsia-600 rounded-md transition-colors font-display"
+                            >
+                                Alta Qualidade ✨
+                            </button>
+                        </div>
+                        <button onClick={() => setQualitySelection(null)} className="mt-6 w-full text-center text-gray-400 hover:text-white transition-colors">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
             )}
             <header className="text-center">
                 <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Compositor da Revista</h2>
@@ -224,8 +270,18 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                 <section className="bg-gray-800 p-6 rounded-lg shadow-lg border border-fuchsia-500/20">
                     <div className="flex justify-between items-start mb-4">
                         <div>
-                            <h4 className="text-2xl font-display text-cyan-400">Capa</h4>
-                            <p className="text-sm text-gray-400">Edite o prompt para refinar a arte da capa.</p>
+                            <div className="flex items-center gap-4">
+                                <h4 className="text-2xl font-display text-cyan-400">Capa</h4>
+                                <button
+                                    onClick={onResetCoverPrompt}
+                                    className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-gray-700"
+                                    title="Resetar prompt para o original"
+                                >
+                                    <ResetIcon className="w-4 h-4" />
+                                    <span>Resetar Prompt</span>
+                                </button>
+                            </div>
+                            <p className="text-sm text-gray-400 mt-1">Edite o prompt para refinar a arte da capa.</p>
                         </div>
                         <div className="flex items-center gap-4">
                             <StatusIndicator status={generationStatus.cover} />
@@ -275,7 +331,7 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                                             <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                                         </svg>
                                     </button>
-                                    <GenerateButton status={articleStatus} onClick={() => onGenerateArticle(index, article.contentPrompt, article.tipsPrompt, article.imagePrompts)} text="Gerar Artigo" />
+                                    <GenerateButton status={articleStatus} onClick={() => setQualitySelection({ index, contentPrompt: article.contentPrompt, tipsPrompt: article.tipsPrompt, imagePrompts: article.imagePrompts })} text="Gerar Artigo" />
                                 </div>
                             </div>
 
