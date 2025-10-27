@@ -47,6 +47,13 @@ const config: Record<CreationType, {
         description: "Descreva o tema para a análise das capas. A IA irá gerar uma revista comparando-as e elegendo a melhor.",
         placeholder: "Ex: As capas da série Final Fantasy, Jogos de terror do PS1..."
     },
+    // Fix: Added 'editorial_concept' to the config object to satisfy the Record<CreationType, ...> type.
+    // This component is not rendered for this type, but the property is required for type safety.
+    editorial_concept: {
+        title: "Tipos de Editoração",
+        description: "Defina o conceito de uma publicação (revista, zine, mangá) e receba um plano editorial detalhado da IA.",
+        placeholder: ""
+    },
 };
 
 const InfoIcon: React.FC = () => (
@@ -60,6 +67,7 @@ const CreateByTopic: React.FC<CreateByTopicProps> = ({ type, onGenerate }) => {
     const [topic, setTopic] = useState('');
     const [isDeepMode, setIsDeepMode] = useState(false);
     const { title, description, placeholder } = config[type];
+    const buttonText = type === 'cover_choice' ? 'Gerar Capa' : 'Gerar Revista';
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -104,7 +112,7 @@ const CreateByTopic: React.FC<CreateByTopicProps> = ({ type, onGenerate }) => {
                     disabled={!topic.trim()}
                     className="w-full bg-fuchsia-600 text-white font-bold py-3 px-6 rounded-md hover:bg-fuchsia-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-fuchsia-500/20 font-display"
                 >
-                    Gerar Revista
+                    {buttonText}
                 </button>
             </form>
         </div>

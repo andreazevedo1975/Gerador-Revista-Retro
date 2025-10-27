@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Magazine, Article, ArticleImage } from '../types';
+import { Magazine, Article, ArticleImage, FinalMagazineDraft } from '../types';
 import EditableText from './EditableText';
 import RegenerateImageButton from './RegenerateImageButton';
 import Comments from './Comments';
 import ReadingMode from './ReadingMode';
+import EditorialConceptPage from './EditorialConceptPage';
 
 interface MagazineViewerProps {
-    magazine: Magazine;
+    draft: FinalMagazineDraft;
     onTextUpdate: (path: string, newText: string) => void;
     onImageRegenerate: (path: string, options: { quality: 'standard' | 'high'; modificationPrompt?: string; }) => void;
     isGeneratingImage: Record<string, boolean>;
@@ -165,7 +166,9 @@ const WhatsAppIcon: React.FC = () => (
 );
 
 
-const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate, onImageRegenerate, isGeneratingImage }) => {
+const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, onImageRegenerate, isGeneratingImage }) => {
+    const { magazine, identity, editorialConcept } = draft;
+    
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
     const [isDownloadingDocx, setIsDownloadingDocx] = useState(false);
     const [readingArticle, setReadingArticle] = useState<Article | null>(null);
@@ -191,6 +194,8 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
     }, [isNavOpen]);
 
     useEffect(() => {
+        if (!magazine) return;
+
         const observer = new IntersectionObserver(
             (entries) => {
                 const visibleEntry = entries.find(entry => entry.isIntersecting);
@@ -220,7 +225,26 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 if (ref) observer.unobserve(ref);
             });
         };
-    }, [magazine.articles]);
+    }, [magazine]);
+
+    if (!magazine) {
+        return (
+            <div className="max-w-4xl mx-auto">
+                 <header className="text-center mb-8 bg-gray-800/50 p-6 rounded-lg border border-fuchsia-500/30">
+                    <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Revisão Final da Revista Pronta</h2>
+                    <p className="text-lg text-gray-400">Ainda não há conteúdo de revista para exibir.</p>
+                    <p className="text-md text-gray-500 mt-2">Use um dos tópicos da Central de Criação para gerar os artigos e clique em "OK" para adicioná-los aqui.</p>
+                    {identity && <p className="mt-4 text-green-400">✅ Identidade Visual está pronta!</p>}
+                    {editorialConcept && <p className="mt-2 text-green-400">✅ Conceito Editorial está pronto!</p>}
+                </header>
+                 {editorialConcept && <EditorialConceptPage concept={editorialConcept} />}
+            </div>
+        )
+    }
+    
+    const finalTitle = identity?.magazineName || magazine.title;
+    const finalLogoUrl = identity?.logoUrl || magazine.logoUrl;
+
 
     const scrollToArticle = (index: number) => {
         if (articleRefs.current[index]) {
@@ -362,7 +386,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 y += imgHeight + 30;
             }
     
-            const titleLines = pdf.splitTextToSize(magazine.title, contentWidth * 0.8);
+            const titleLines = pdf.splitTextToSize(finalTitle, contentWidth * 0.8);
             const titleHeight = pdf.getTextDimensions(titleLines).h;
             addPageIfNeeded(titleHeight);
             pdf.text(titleLines, pageWidth / 2, y, { align: 'center' });
@@ -415,7 +439,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 parseMarkdownForPdf(article.tips);
             }
     
-            pdf.save(`${magazine.title.replace(/\s+/g, '_')}.pdf`);
+            pdf.save(`${finalTitle.replace(/\s+/g, '_')}.pdf`);
     
         } catch (error) {
             console.error("Erro ao gerar PDF:", error);
@@ -504,12 +528,12 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 <html lang="pt-BR">
                 <head>
                     <meta charset="UTF-8">
-                    <title>${magazine.title}</title>
+                    <title>${finalTitle}</title>
                     ${styles}
                 </head>
                 <body>
                     <div style="text-align: center; page-break-after: always;">
-                        <h1>${magazine.title}</h1>
+                        <h1>${finalTitle}</h1>
                         ${magazine.coverImage ? `<p><img src="${magazine.coverImage}" style="width: 500px; max-width: 100%; height: auto;" alt="Capa da Revista"></p>` : ''}
                     </div>
                     ${articlesHtml}
@@ -522,7 +546,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                 margins: { top: 720, bottom: 720, left: 720, right: 720 }
             });
     
-            saveAs(docxBlob, `${magazine.title.replace(/\s+/g, '_')}.docx`);
+            saveAs(docxBlob, `${finalTitle.replace(/\s+/g, '_')}.docx`);
     
         } catch (error) {
             console.error("Erro ao gerar DOCX:", error);
@@ -727,7 +751,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
     };
 
     const handleDownloadImage = (imageUrl: string, articleTitle: string, imageType: string) => {
-        const safeMagazineTitle = magazine.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeMagazineTitle = finalTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const safeArticleTitle = articleTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const fileName = `${safeMagazineTitle}_${safeArticleTitle}_${imageType}.jpg`;
         
@@ -741,8 +765,8 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
 
     const handleShare = async () => {
         const shareData = {
-            title: `Revista Retrô Gamer AI: ${magazine.title}`,
-            text: `Confira a revista "${magazine.title}" que eu criei usando a Retrô Gamer AI!`,
+            title: `Revista Retrô Gamer AI: ${finalTitle}`,
+            text: `Confira a revista "${finalTitle}" que eu criei usando a Retrô Gamer AI!`,
             url: window.location.href,
         };
 
@@ -761,6 +785,11 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
     
     return (
         <div className="max-w-4xl mx-auto">
+            <header className="text-center mb-8 bg-gray-800/50 p-6 rounded-lg border border-fuchsia-500/30">
+                <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Revisão Final da Revista Pronta</h2>
+                <p className="text-lg text-gray-400">Aqui está a sua revista completa. Revise o conteúdo, faça edições de última hora clicando nos textos e, quando estiver satisfeito, use os botões abaixo para compartilhar ou baixar.</p>
+            </header>
+
             {readingArticle && (
                 <ReadingMode 
                     article={readingArticle} 
@@ -773,13 +802,13 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                     <div className="bg-gray-800 rounded-lg shadow-2xl p-6 border border-fuchsia-500/30 w-full max-w-sm" onClick={e => e.stopPropagation()}>
                         <h3 className="text-2xl font-display text-yellow-300 mb-6 text-center">Compartilhar Revista</h3>
                         <div className="flex justify-center items-center gap-6">
-                            <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(`Confira a revista "${magazine.title}" que criei com a Retrô Gamer AI!`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-cyan-400 transition-colors" title="Compartilhar no Twitter">
+                            <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(`Confira a revista "${finalTitle}" que criei com a Retrô Gamer AI!`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-cyan-400 transition-colors" title="Compartilhar no Twitter">
                                 <TwitterIcon />
                             </a>
                              <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-blue-500 transition-colors" title="Compartilhar no Facebook">
                                 <FacebookIcon />
                             </a>
-                            <a href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Confira a revista "${magazine.title}" que criei com a Retrô Gamer AI! ${window.location.href}`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-green-500 transition-colors" title="Compartilhar no WhatsApp">
+                            <a href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Confira a revista "${finalTitle}" que criei com a Retrô Gamer AI! ${window.location.href}`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-green-500 transition-colors" title="Compartilhar no WhatsApp">
                                 <WhatsAppIcon />
                             </a>
                         </div>
@@ -819,9 +848,9 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                     
                     <header className="mb-12 text-center">
                         <div className="relative w-full h-auto mb-6 group border-4 border-fuchsia-500 shadow-lg shadow-fuchsia-500/20">
-                            {magazine.logoUrl && (
+                            {finalLogoUrl && (
                                 <img 
-                                    src={magazine.logoUrl} 
+                                    src={finalLogoUrl} 
                                     alt="Logo da Revista" 
                                     className="absolute top-4 left-4 w-16 h-16 md:w-24 md:h-24 object-contain bg-black/30 p-1 rounded-md z-10"
                                 />
@@ -835,11 +864,13 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                         </div>
                         <EditableText
                             tag="h1"
-                            text={magazine.title}
+                            text={finalTitle}
                             onSave={(newText: string) => onTextUpdate('title', newText)}
                             className="text-4xl md:text-6xl font-display text-yellow-300 break-words"
                         />
                     </header>
+
+                    {editorialConcept && <EditorialConceptPage concept={editorialConcept} />}
 
                     <div className="flex flex-col space-y-16">
                         {magazine.articles.map((article, index) => {

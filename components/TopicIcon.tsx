@@ -80,6 +80,14 @@ const TopicIcon: React.FC<TopicIconProps> = ({ type }) => {
                     <g fill="#F59E0B"><path d="M32 44l4 6v-6z M32 50l4-2v2z"/></g>
                 </svg>
             );
+        case 'editorial_concept':
+            return (
+                <svg {...iconProps}>
+                    <g fill="#A78BFA"><path d="M12 8h40v48H12z"/></g>
+                    <g fill="#C4B5FD"><path d="M16 12h32v40H16z"/></g>
+                    <g fill="#4338CA"><path d="M20 16h24v16H20z M20 36h10v4H20z M34 36h10v4H34z M20 44h24v4H20z"/></g>
+                </svg>
+            );
         default:
             return (
                 <svg {...iconProps} className="w-12 h-12 text-gray-700">

@@ -7,6 +7,8 @@ interface CreationHubProps {
     onLoadSavedMagazine: () => void;
     hasSavedMagazine: boolean;
     onGoToLogoGenerator: () => void;
+    onGoToFinalReview: () => void;
+    hasDraftContent: boolean;
 }
 
 const creationTypes: {
@@ -20,19 +22,32 @@ const creationTypes: {
     { type: 'developer', title: "Lendas do Desenvolvimento", description: "Explore a história de um estúdio ou criador icônico que moldou o universo dos games." },
     { type: 'rivalry', title: "Rivalidades Históricas", description: "Uma revista sobre as grandes batalhas da indústria: consoles, jogos ou empresas." },
     { type: 'soundtrack', title: "O Som dos Games", description: "Mergulhe nas trilhas sonoras que marcaram época. Uma edição sobre os compositores e a tecnologia musical." },
+    { type: 'editorial_concept', title: "Tipos de Editoração", description: "Defina o conceito de uma publicação (revista, zine, mangá) e receba um plano editorial detalhado da IA." },
     { type: 'cover_choice', title: "Escolha de Capa da Edição", description: "Uma edição que analisa capas de jogos icônicos, com a IA ajudando a eleger a melhor." },
 ];
 
-const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadSavedMagazine, hasSavedMagazine, onGoToLogoGenerator }) => {
+const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadSavedMagazine, hasSavedMagazine, onGoToLogoGenerator, onGoToFinalReview, hasDraftContent }) => {
     
     const coverChoiceType = creationTypes.find(item => item.type === 'cover_choice');
-    const mainCreationTypes = creationTypes.filter(item => item.type !== 'cover_choice');
+    const mainCreationTypes = creationTypes.filter(item => item.type !== 'cover_choice' && item.type !== 'editorial_concept');
+    const editorialConceptType = creationTypes.find(item => item.type === 'editorial_concept');
 
     return (
         <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-4">Central de Criação</h2>
             <p className="text-lg text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">Escolha o tipo de pauta que você quer criar na sua próxima edição da Retrô Gamer AI.</p>
             
+            {hasDraftContent && (
+                 <div className="mb-12">
+                     <button
+                         onClick={onGoToFinalReview}
+                         className="bg-green-600 text-white font-bold py-4 px-10 hover:bg-green-700 transition-colors duration-300 shadow-lg shadow-green-500/20 font-display text-lg animate-pulse"
+                     >
+                         Ir para Revisão Final
+                     </button>
+                 </div>
+            )}
+
             <div className="mb-12 p-6 bg-gray-800/50 rounded-lg border border-fuchsia-500/30 flex flex-col sm:flex-row gap-6 justify-center items-stretch">
                 {hasSavedMagazine && (
                     <div className="flex-1 text-center flex flex-col">
@@ -40,7 +55,7 @@ const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadS
                         <p className="text-gray-400 mb-4 flex-grow">Você tem uma revista em andamento. Carregue-a para continuar editando.</p>
                         <button
                             onClick={onLoadSavedMagazine}
-                            className="bg-fuchsia-600 text-white font-bold py-3 px-8 hover:bg-fuchsia-700 transition-colors duration-300 shadow-lg font-display text-base"
+                            className="bg-fuchsia-600 text-white font-bold py-3 px-8 hover:bg-fuchsia-700 transition-colors duration-300 shadow-lg font-display text-base mt-auto"
                         >
                             Carregar Revista Salva
                         </button>
@@ -51,20 +66,32 @@ const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadS
                     <p className="text-gray-400 mb-4 flex-grow">Crie um logo exclusivo em pixel art para a sua revista.</p>
                     <button
                         onClick={onGoToLogoGenerator}
-                        className="bg-cyan-600 text-white font-bold py-3 px-8 hover:bg-cyan-700 transition-colors duration-300 shadow-lg font-display text-base"
+                        className="bg-cyan-600 text-white font-bold py-3 px-8 hover:bg-cyan-700 transition-colors duration-300 shadow-lg font-display text-base mt-auto"
                     >
                         Criar Logo
                     </button>
                 </div>
                 {coverChoiceType && (
-                    <div className="flex-1 text-center flex flex-col">
+                     <div className="flex-1 text-center flex flex-col">
                         <h3 className="text-xl font-display text-cyan-300 mb-2">{coverChoiceType.title}</h3>
                         <p className="text-gray-400 mb-4 flex-grow">{coverChoiceType.description}</p>
                         <button
                             onClick={() => onSelectCreationType(coverChoiceType.type)}
-                            className="bg-yellow-500 text-gray-900 font-bold py-3 px-8 hover:bg-yellow-600 transition-colors duration-300 shadow-lg font-display text-base"
+                            className="bg-sky-600 text-white font-bold py-3 px-8 hover:bg-sky-700 transition-colors duration-300 shadow-lg font-display text-base mt-auto"
                         >
-                            Criar Pauta
+                            Criar Capa
+                        </button>
+                    </div>
+                )}
+                {editorialConceptType && (
+                    <div className="flex-1 text-center flex flex-col">
+                        <h3 className="text-xl font-display text-cyan-300 mb-2">{editorialConceptType.title}</h3>
+                        <p className="text-gray-400 mb-4 flex-grow">{editorialConceptType.description}</p>
+                        <button
+                            onClick={() => onSelectCreationType(editorialConceptType.type)}
+                            className="bg-purple-600 text-white font-bold py-3 px-8 hover:bg-purple-700 transition-colors duration-300 shadow-lg font-display text-base mt-auto"
+                        >
+                            Criar Conceito
                         </button>
                     </div>
                 )}

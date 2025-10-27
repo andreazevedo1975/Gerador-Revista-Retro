@@ -1,6 +1,8 @@
+import { CreationType as ExistingCreationType } from './types';
+
 export type ImageType = 'logo' | 'gameplay' | 'artwork';
 export type GenerationState = 'pending' | 'generating' | 'done' | 'error';
-export type CreationType = 'console' | 'game' | 'guide' | 'developer' | 'rivalry' | 'soundtrack' | 'cover_choice';
+export type CreationType = 'console' | 'game' | 'guide' | 'developer' | 'rivalry' | 'soundtrack' | 'cover_choice' | 'editorial_concept';
 
 export interface VisualIdentity {
     magazineName: string;
@@ -51,4 +53,40 @@ export interface Magazine {
 export interface MagazineHistoryEntry {
     timestamp: number;
     magazine: Magazine;
+}
+
+// Tipos para o novo Gerador de Conceito Editorial
+export type EditorialStyle = 'Magazine' | 'Jornal' | 'Quadrinhos' | 'Mangá' | 'Livro' | 'Zine';
+
+export interface EditorialConceptInputs {
+    publicationTitle: string;
+    mainTheme: string;
+    targetAudience: string;
+    editorialStyles: EditorialStyle[];
+    visualHighlight: string;
+    dominantColor: string;
+}
+
+export interface EditorialConceptData {
+    technicalSheet: {
+        proposedName: string;
+        editorialFocus: string;
+        referenceFormat: string;
+        keyAudience: string;
+    };
+    coverConcept: {
+        description: string;
+        headline: string;
+        supportingText: string;
+    };
+    internalLayout: {
+        description: string;
+    };
+    imageGenerationPrompt: string;
+}
+
+export interface FinalMagazineDraft {
+    identity?: VisualIdentity;
+    editorialConcept?: EditorialConceptData;
+    magazine?: Magazine;
 }

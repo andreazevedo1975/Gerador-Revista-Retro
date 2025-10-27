@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity } from './types';
+import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity, EditorialConceptInputs, EditorialConceptData, FinalMagazineDraft } from './types';
 import * as geminiService from './services/geminiService';
 import MagazineViewer from './components/EbookViewer';
 import LoadingOverlay from './components/LoadingOverlay';
@@ -7,8 +7,10 @@ import CreationHub from './components/CreationHub';
 import CreateByTopic from './components/CreateByTopic';
 import MagazineComposer from './components/MagazineComposer';
 import LogoGenerator from './components/LogoGenerator';
+import EditorialConceptCreator from './components/EditorialConceptCreator';
+import EditorialConceptViewer from './components/EditorialConceptViewer';
 
-type View = 'hub' | 'create' | 'composer' | 'magazine' | 'logoGenerator';
+type View = 'hub' | 'create' | 'composer' | 'finalReview' | 'logoGenerator' | 'editorialConceptCreator' | 'editorialConceptViewer';
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const SAVE_KEY = 'retroGamerSaveData';
@@ -37,6 +39,13 @@ const App: React.FC = () => {
     const [isGeneratingLogo, setIsGeneratingLogo] = useState(false);
     const [logoError, setLogoError] = useState<string | null>(null);
 
+    // Editorial Concept State
+    const [editorialConcept, setEditorialConcept] = useState<EditorialConceptData | null>(null);
+
+    // Final Draft State
+    const [finalMagazineDraft, setFinalMagazineDraft] = useState<FinalMagazineDraft>({});
+
+
     // Load visual identity on mount
     useEffect(() => {
         try {
@@ -51,7 +60,7 @@ const App: React.FC = () => {
 
     // Save magazine state to localStorage whenever it changes
     useEffect(() => {
-        if (magazine && view !== 'hub') {
+        if (magazine && (view === 'composer')) { // Only save during composition
             try {
                 // Save a "light" version without base64 image data to prevent quota errors.
                 const lightMagazine = {
@@ -274,10 +283,15 @@ const App: React.FC = () => {
 
     const handleSelectCreationType = (type: CreationType) => {
         setCurrentCreationType(type);
-        setView('create');
+        if (type === 'editorial_concept') {
+            setView('editorialConceptCreator');
+        } else {
+            setView('create');
+        }
     };
 
     const handleBackToHub = () => {
+        // Don't clear the draft, but clear transient states
         setMagazine(null);
         setMagazineStructure(null);
         setInitialStructure(null);
@@ -287,11 +301,15 @@ const App: React.FC = () => {
         setGeneratedLogo(null);
         setIsGeneratingLogo(false);
         setLogoError(null);
+        setEditorialConcept(null);
         setView('hub');
     };
     
-    const handleViewMagazine = () => {
-        setView('magazine');
+    const handleConfirmMagazineAndGoToReview = () => {
+        if (magazine) {
+            setFinalMagazineDraft(prev => ({...prev, magazine: magazine}));
+            setView('finalReview');
+        }
     };
 
     const handleTextUpdate = useCallback((path: string, newText: string) => {
@@ -558,10 +576,6 @@ const App: React.FC = () => {
         };
     
         const updatedHistory = [newEntry, ...history];
-        // Optional: Cap history size
-        // if (updatedHistory.length > 20) {
-        //     updatedHistory.pop();
-        // }
         setHistory(updatedHistory);
     
         try {
@@ -605,16 +619,46 @@ const App: React.FC = () => {
         }
     };
 
-    const handleSaveIdentity = (name: string, logoUrl: string) => {
+    const handleConfirmIdentity = (name: string, logoUrl: string) => {
         const newIdentity: VisualIdentity = { magazineName: name, logoUrl };
         setVisualIdentity(newIdentity);
+        setFinalMagazineDraft(prev => ({ ...prev, identity: newIdentity }));
         try {
             localStorage.setItem(IDENTITY_KEY, JSON.stringify(newIdentity));
-            alert("Identidade visual salva com sucesso!");
+            alert("Identidade visual armazenada para a revisão final!");
         } catch (error) {
             console.error("Falha ao salvar identidade visual:", error);
             setLogoError("Não foi possível salvar a identidade visual. O armazenamento pode estar cheio.");
         }
+        handleBackToHub();
+    };
+
+    const handleGenerateEditorialConcept = async (inputs: EditorialConceptInputs) => {
+        setIsLoading(true);
+        setError(null);
+        setEditorialConcept(null);
+        setLoadingMessages([]);
+        addLoadingMessage("Consultando o Diretor de Arte Editorial...");
+
+        try {
+            const concept = await geminiService.generateEditorialConcept(inputs);
+            setEditorialConcept(concept);
+            setView('editorialConceptViewer');
+        } catch (err: any)
+        {
+            console.error(err);
+            setError(`Ocorreu um erro ao gerar o conceito editorial: ${err.message}. Tente novamente.`);
+            setView('editorialConceptCreator');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleConfirmEditorialConcept = (concept: EditorialConceptData) => {
+        setEditorialConcept(concept);
+        setFinalMagazineDraft(prev => ({ ...prev, editorialConcept: concept }));
+        alert("Conceito editorial armazenado para a revisão final!");
+        handleBackToHub();
     };
 
     const renderContent = () => {
@@ -627,15 +671,15 @@ const App: React.FC = () => {
         }
 
         switch(view) {
-            case 'magazine':
-                return magazine ? (
+            case 'finalReview':
+                return (
                     <MagazineViewer
-                        magazine={magazine}
+                        draft={finalMagazineDraft}
                         onTextUpdate={handleTextUpdate}
                         onImageRegenerate={handleImageRegenerate}
                         isGeneratingImage={isGeneratingImage}
                     />
-                ) : null;
+                );
             case 'composer':
                 return magazine && magazineStructure ? (
                     <MagazineComposer
@@ -647,7 +691,7 @@ const App: React.FC = () => {
                         onGenerateCover={handleGenerateCover}
                         onGenerateArticle={handleGenerateArticle}
                         onGenerateAll={handleGenerateAll}
-                        onViewMagazine={handleViewMagazine}
+                        onGoToFinalReview={handleConfirmMagazineAndGoToReview}
                         onSaveToHistory={handleSaveToHistory}
                         onRevertToVersion={handleRevertToVersion}
                         onToggleHistoryPanel={() => setIsHistoryPanelOpen(prev => !prev)}
@@ -666,10 +710,14 @@ const App: React.FC = () => {
                         isLoading={isGeneratingLogo}
                         generatedLogo={generatedLogo}
                         error={logoError}
-                        onSaveIdentity={handleSaveIdentity}
+                        onConfirm={handleConfirmIdentity}
                         initialMagazineName={visualIdentity?.magazineName}
                     />
                 );
+            case 'editorialConceptCreator':
+                return <EditorialConceptCreator onGenerate={handleGenerateEditorialConcept} />;
+            case 'editorialConceptViewer':
+                return editorialConcept ? <EditorialConceptViewer concept={editorialConcept} onConfirm={handleConfirmEditorialConcept} onBack={() => setView('editorialConceptCreator')} /> : null;
             case 'hub':
             default:
                 return <CreationHub 
@@ -677,6 +725,8 @@ const App: React.FC = () => {
                     onLoadSavedMagazine={handleLoadSavedMagazine}
                     hasSavedMagazine={hasSavedMagazine()}
                     onGoToLogoGenerator={handleGoToLogoGenerator}
+                    onGoToFinalReview={() => setView('finalReview')}
+                    hasDraftContent={Object.keys(finalMagazineDraft).length > 0}
                 />;
         }
     };

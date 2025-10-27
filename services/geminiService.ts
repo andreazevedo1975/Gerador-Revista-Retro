@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { MagazineStructure, ImageType } from '../types';
+import { MagazineStructure, ImageType, EditorialConceptInputs, EditorialConceptData } from '../types';
 
 // Helper function for delays
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -245,5 +245,89 @@ export async function generateLogo(prompt: string): Promise<string> {
             return `data:image/jpeg;base64,${base64ImageBytes}`;
         }
         throw new Error("A geração de logo falhou ou não retornou imagens.");
+    });
+}
+
+
+// Nova função para o Gerador de Conceito Editorial
+const editorialConceptSchema = {
+    type: Type.OBJECT,
+    properties: {
+        technicalSheet: {
+            type: Type.OBJECT,
+            properties: {
+                proposedName: { type: Type.STRING },
+                editorialFocus: { type: Type.STRING },
+                referenceFormat: { type: Type.STRING },
+                keyAudience: { type: Type.STRING },
+            },
+            required: ["proposedName", "editorialFocus", "referenceFormat", "keyAudience"],
+        },
+        coverConcept: {
+            type: Type.OBJECT,
+            properties: {
+                description: { type: Type.STRING },
+                headline: { type: Type.STRING },
+                supportingText: { type: Type.STRING },
+            },
+            required: ["description", "headline", "supportingText"],
+        },
+        internalLayout: {
+            type: Type.OBJECT,
+            properties: {
+                description: { type: Type.STRING },
+            },
+            required: ["description"],
+        },
+        imageGenerationPrompt: {
+            type: Type.STRING
+        },
+    },
+    required: ["technicalSheet", "coverConcept", "internalLayout", "imageGenerationPrompt"],
+};
+
+export async function generateEditorialConcept(inputs: EditorialConceptInputs): Promise<EditorialConceptData> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const modelName = 'gemini-2.5-flash';
+
+    const prompt = `
+        Você é um Diretor de Arte Editorial e um Editor-Chefe, especializado em diversas formas de publicação. Sua missão é guiar o usuário na criação de um projeto de revista, fornecendo uma descrição detalhada e uma pré-visualização conceitual em texto, pronta para ser desenvolvida.
+
+        Com base nas seguintes informações do usuário:
+        - Título Provisório da Publicação: "${inputs.publicationTitle}"
+        - Tema Principal e Conteúdo Central: "${inputs.mainTheme}"
+        - Público-Alvo: "${inputs.targetAudience}"
+        - Estilo de Editoração Principal: "${inputs.editorialStyles.join(', ')}"
+        - Elemento de Destaque Visual: "${inputs.visualHighlight}"
+        - Cor Predominante na Capa/Layout: "${inputs.dominantColor}"
+
+        Gere um objeto JSON que siga exatamente o schema fornecido. O conteúdo deve ser em português do Brasil.
+
+        1.  **Ficha Técnica do Conceito**: Preencha os campos com base nas informações fornecidas.
+        2.  **Capa e Manchete Principal (Pré-Visualização Conceitual em Texto)**: Descreva a capa como se fosse um mockup em alta resolução. Inclua uma descrição da imagem de capa, o uso da cor e do estilo de editoração. Crie uma manchete de capa poderosa e um texto de apoio atraente.
+            Exemplo de descrição: "A capa utiliza um estilo de Mangá preto e branco com hachuras densas, contrastando com o Título em fonte sans-serif em um vibrante Vermelho-vivo. A imagem principal é um plano detalhe do rosto de um personagem expressando determinação."
+        3.  **Seção de Layout Interno (Mockup de Página Dupla)**: Escolha um dos estilos de editoração fornecidos pelo usuário e descreva em detalhes como uma página dupla interna seria diagramada. Descreva a estrutura da grade (colunas, quadros), uso de imagem/ilustração, tipografia e uso de cores.
+            Exemplo de descrição: "Estilo Magazine Semanal: A página dupla é organizada em 3 colunas. O lado esquerdo é dominado por uma fotografia de alto contraste que ocupa 2/3 da página. O corpo do texto está justificado em caixas brancas sobre um fundo de cor predominante, com títulos em negrito e tamanho 48pt, alinhados à esquerda."
+        4.  **Sugestão de Comando para Geração de Imagem (Prompt para IA Visual)**: Crie um prompt direto e otimizado em inglês para uma IA de geração de imagens (como Midjourney ou DALL-E) para que o usuário possa gerar o visual da capa (mockup).
+            Exemplo de Prompt: "Magazine cover, manga style, featuring dominant red color and high-contrast vintage illustrations. Theme: Political analysis. Headline: 'The Silent Revolution'. Magazine mockup, studio photography. --ar 2:3"
+    `;
+
+    return withRetry(async () => {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: editorialConceptSchema as any,
+            },
+        });
+
+        const jsonText = response.text.trim();
+        try {
+            return JSON.parse(jsonText) as EditorialConceptData;
+        } catch (e) {
+            console.error("Failed to parse JSON from Gemini for editorial concept:", jsonText, e);
+            throw new Error("A resposta da IA para o conceito editorial não estava no formato JSON esperado.");
+        }
     });
 }

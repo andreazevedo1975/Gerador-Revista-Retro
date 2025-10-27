@@ -12,7 +12,7 @@ interface MagazineComposerProps {
     onGenerateCover: (prompt: string) => void;
     onGenerateArticle: (index: number, contentPrompt: string, tipsPrompt: string, imagePrompts: ArticleImagePrompt[], quality: 'standard' | 'high') => void;
     onGenerateAll: () => void;
-    onViewMagazine: () => void;
+    onGoToFinalReview: () => void;
     onSaveToHistory: () => void;
     onRevertToVersion: (magazine: Magazine) => void;
     onToggleHistoryPanel: () => void;
@@ -172,7 +172,7 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     onGenerateCover,
     onGenerateArticle,
     onGenerateAll,
-    onViewMagazine,
+    onGoToFinalReview,
     onSaveToHistory,
     onRevertToVersion,
     onToggleHistoryPanel,
@@ -257,11 +257,11 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                     Gerar Tudo
                 </button>
                  <button
-                    onClick={onViewMagazine}
+                    onClick={onGoToFinalReview}
                     disabled={!isAllDone}
                     className="bg-green-600 text-white font-bold py-3 px-6 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
                 >
-                    Visualizar Revista
+                    OK &amp; Revisão Final
                 </button>
             </div>
 

@@ -6,7 +6,7 @@ interface LogoGeneratorProps {
     isLoading: boolean;
     generatedLogo: string | null;
     error: string | null;
-    onSaveIdentity: (name: string, logoUrl: string) => void;
+    onConfirm: (name: string, logoUrl: string) => void;
     initialMagazineName?: string;
 }
 
@@ -20,7 +20,7 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' 
     </svg>
 );
 
-const LogoGenerator: React.FC<LogoGeneratorProps> = ({ onGenerate, isLoading, generatedLogo, error, onSaveIdentity, initialMagazineName }) => {
+const LogoGenerator: React.FC<LogoGeneratorProps> = ({ onGenerate, isLoading, generatedLogo, error, onConfirm, initialMagazineName }) => {
     const [prompt, setPrompt] = useState("Um logo em pixel art 16-bits para uma revista chamada 'Retrô Gamer AI', com um controle de videogame e cores neon vibrantes.");
     const [magazineName, setMagazineName] = useState(initialMagazineName || "Retrô Gamer AI");
 
@@ -47,9 +47,9 @@ const LogoGenerator: React.FC<LogoGeneratorProps> = ({ onGenerate, isLoading, ge
         document.body.removeChild(link);
     };
 
-    const handleSave = () => {
+    const handleConfirm = () => {
         if (generatedLogo && magazineName.trim()) {
-            onSaveIdentity(magazineName.trim(), generatedLogo);
+            onConfirm(magazineName.trim(), generatedLogo);
         }
     };
 
@@ -80,8 +80,8 @@ const LogoGenerator: React.FC<LogoGeneratorProps> = ({ onGenerate, isLoading, ge
                         </button>
 
                         <div className="w-full space-y-4 p-6 bg-gray-900/50 rounded-lg border-2 border-green-500/30">
-                            <h3 className="text-xl font-display text-green-300 text-center">Salvar Identidade Visual</h3>
-                            <p className="text-gray-400 text-center text-sm">Salve o nome e o logo para usar em suas próximas revistas.</p>
+                            <h3 className="text-xl font-display text-green-300 text-center">Usar na Revista</h3>
+                            <p className="text-gray-400 text-center text-sm">Armazene este logo e nome para a sua revisão final.</p>
                             <div>
                                 <label htmlFor="magazineName" className="block text-sm font-bold text-gray-300 mb-2">
                                     Nome da Revista
@@ -95,8 +95,8 @@ const LogoGenerator: React.FC<LogoGeneratorProps> = ({ onGenerate, isLoading, ge
                                     className="w-full p-3 border-2 border-green-500/50 bg-gray-800 text-gray-200 rounded-md focus:ring-2 focus:ring-green-400 focus:border-green-400 transition"
                                 />
                             </div>
-                            <button onClick={handleSave} disabled={!magazineName.trim()} className="w-full bg-green-700 text-white font-bold py-3 px-6 rounded-md hover:bg-green-800 disabled:bg-gray-500 transition-colors font-display">
-                                Salvar Identidade
+                            <button onClick={handleConfirm} disabled={!magazineName.trim()} className="w-full bg-green-700 text-white font-bold py-3 px-6 rounded-md hover:bg-green-800 disabled:bg-gray-500 transition-colors font-display">
+                                OK
                             </button>
                         </div>
                     </div>
