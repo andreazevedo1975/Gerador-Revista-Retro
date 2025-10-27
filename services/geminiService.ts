@@ -92,12 +92,13 @@ const structureSchema = {
     required: ["title", "coverImagePrompt", "articles"],
 };
 
-export async function generateMagazineStructure(idea: string, isDeepMode: boolean): Promise<MagazineStructure> {
+export async function generateMagazineStructure(idea: string, isDeepMode: boolean, magazineName?: string): Promise<MagazineStructure> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = isDeepMode ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+    const magazineNameToUse = magazineName || "Retrô Gamer AI";
 
     let prompt = `
-        Você é um editor de uma revista de videogames retrô dos anos 90 chamada "Retrô Gamer AI".
+        Você é um editor de uma revista de videogames retrô dos anos 90 chamada "${magazineNameToUse}".
         Crie a estrutura para uma nova edição da revista com base na seguinte pauta: "${idea}".
         A revista deve ter um tom divertido, informativo e nostálgico e conter exatamente 5 artigos.
         Para a capa, crie um prompt de imagem em inglês que seja extremamente detalhado e evocativo. O objetivo é gerar uma arte de capa espetacular no estilo das revistas de videogame dos anos 90. Instrua a IA de imagem a usar um estilo 'vibrant 16-bit pixel art' ou '90s Japanese box art'. O prompt deve focar em uma cena de ação dinâmica, com composição cinematográfica, iluminação dramática e cores vibrantes, capturando a essência do tópico principal.
@@ -221,5 +222,28 @@ export async function generateImage({
             return `data:image/jpeg;base64,${base64ImageBytes}`;
         }
         throw new Error("A geração de imagem falhou ou não retornou imagens.");
+    });
+}
+
+export async function generateLogo(prompt: string): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    return withRetry(async () => {
+        const finalPrompt = `A stylized 16-bit pixel art logo, clean background, vector style, vibrant colors. Concept: "${prompt}"`;
+
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: finalPrompt,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/jpeg',
+              aspectRatio: '1:1',
+            },
+        });
+
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
+            return `data:image/jpeg;base64,${base64ImageBytes}`;
+        }
+        throw new Error("A geração de logo falhou ou não retornou imagens.");
     });
 }

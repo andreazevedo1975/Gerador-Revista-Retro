@@ -6,6 +6,7 @@ interface CreationHubProps {
     onSelectCreationType: (type: CreationType) => void;
     onLoadSavedMagazine: () => void;
     hasSavedMagazine: boolean;
+    onGoToLogoGenerator: () => void;
 }
 
 const creationTypes: {
@@ -22,27 +23,55 @@ const creationTypes: {
     { type: 'cover_choice', title: "Escolha de Capa da Edição", description: "Uma edição que analisa capas de jogos icônicos, com a IA ajudando a eleger a melhor." },
 ];
 
-const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadSavedMagazine, hasSavedMagazine }) => {
+const CreationHub: React.FC<CreationHubProps> = ({ onSelectCreationType, onLoadSavedMagazine, hasSavedMagazine, onGoToLogoGenerator }) => {
+    
+    const coverChoiceType = creationTypes.find(item => item.type === 'cover_choice');
+    const mainCreationTypes = creationTypes.filter(item => item.type !== 'cover_choice');
+
     return (
         <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-4">Central de Criação</h2>
             <p className="text-lg text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">Escolha o tipo de pauta que você quer criar na sua próxima edição da Retrô Gamer AI.</p>
             
-            {hasSavedMagazine && (
-                 <div className="mb-12 p-6 bg-gray-800/50 rounded-lg border border-fuchsia-500/30">
-                    <h3 className="text-xl font-display text-cyan-300 mb-2">Continue de onde parou</h3>
-                    <p className="text-gray-400 mb-4">Você tem uma revista em andamento. Carregue-a para continuar editando.</p>
+            <div className="mb-12 p-6 bg-gray-800/50 rounded-lg border border-fuchsia-500/30 flex flex-col sm:flex-row gap-6 justify-center items-stretch">
+                {hasSavedMagazine && (
+                    <div className="flex-1 text-center flex flex-col">
+                        <h3 className="text-xl font-display text-cyan-300 mb-2">Continue de onde parou</h3>
+                        <p className="text-gray-400 mb-4 flex-grow">Você tem uma revista em andamento. Carregue-a para continuar editando.</p>
+                        <button
+                            onClick={onLoadSavedMagazine}
+                            className="bg-fuchsia-600 text-white font-bold py-3 px-8 hover:bg-fuchsia-700 transition-colors duration-300 shadow-lg font-display text-base"
+                        >
+                            Carregar Revista Salva
+                        </button>
+                    </div>
+                )}
+                <div className="flex-1 text-center flex flex-col">
+                    <h3 className="text-xl font-display text-cyan-300 mb-2">Gerador de Logo</h3>
+                    <p className="text-gray-400 mb-4 flex-grow">Crie um logo exclusivo em pixel art para a sua revista.</p>
                     <button
-                        onClick={onLoadSavedMagazine}
-                        className="bg-fuchsia-600 text-white font-bold py-3 px-8 hover:bg-fuchsia-700 transition-colors duration-300 shadow-lg font-display text-base"
+                        onClick={onGoToLogoGenerator}
+                        className="bg-cyan-600 text-white font-bold py-3 px-8 hover:bg-cyan-700 transition-colors duration-300 shadow-lg font-display text-base"
                     >
-                        Carregar Última Revista Salva
+                        Criar Logo
                     </button>
                 </div>
-            )}
+                {coverChoiceType && (
+                    <div className="flex-1 text-center flex flex-col">
+                        <h3 className="text-xl font-display text-cyan-300 mb-2">{coverChoiceType.title}</h3>
+                        <p className="text-gray-400 mb-4 flex-grow">{coverChoiceType.description}</p>
+                        <button
+                            onClick={() => onSelectCreationType(coverChoiceType.type)}
+                            className="bg-yellow-500 text-gray-900 font-bold py-3 px-8 hover:bg-yellow-600 transition-colors duration-300 shadow-lg font-display text-base"
+                        >
+                            Criar Pauta
+                        </button>
+                    </div>
+                )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {creationTypes.map(item => (
+                {mainCreationTypes.map(item => (
                     <button
                         key={item.type}
                         onClick={() => onSelectCreationType(item.type)}

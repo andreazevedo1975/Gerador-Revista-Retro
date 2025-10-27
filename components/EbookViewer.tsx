@@ -819,6 +819,13 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ magazine, onTextUpdate,
                     
                     <header className="mb-12 text-center">
                         <div className="relative w-full h-auto mb-6 group border-4 border-fuchsia-500 shadow-lg shadow-fuchsia-500/20">
+                            {magazine.logoUrl && (
+                                <img 
+                                    src={magazine.logoUrl} 
+                                    alt="Logo da Revista" 
+                                    className="absolute top-4 left-4 w-16 h-16 md:w-24 md:h-24 object-contain bg-black/30 p-1 rounded-md z-10"
+                                />
+                            )}
                             <img src={magazine.coverImage} alt="Capa da Revista" className="w-full h-full object-cover" />
                             <RegenerateImageButton 
                                 imageId="coverImage" 

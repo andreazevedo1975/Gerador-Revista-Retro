@@ -1,17 +1,19 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt } from './types';
+import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity } from './types';
 import * as geminiService from './services/geminiService';
 import MagazineViewer from './components/EbookViewer';
 import LoadingOverlay from './components/LoadingOverlay';
 import CreationHub from './components/CreationHub';
 import CreateByTopic from './components/CreateByTopic';
 import MagazineComposer from './components/MagazineComposer';
+import LogoGenerator from './components/LogoGenerator';
 
-type View = 'hub' | 'create' | 'composer' | 'magazine';
+type View = 'hub' | 'create' | 'composer' | 'magazine' | 'logoGenerator';
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const SAVE_KEY = 'retroGamerSaveData';
 const HISTORY_KEY = 'retroGamerHistory';
+const IDENTITY_KEY = 'retroGamerIdentity';
 const API_CALL_DELAY = 4000; // 4 seconds, to stay within ~15 requests/minute rate limit.
 
 const App: React.FC = () => {
@@ -28,6 +30,24 @@ const App: React.FC = () => {
     const [currentCreationType, setCurrentCreationType] = useState<CreationType | null>(null);
     const [history, setHistory] = useState<MagazineHistoryEntry[]>([]);
     const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
+    const [visualIdentity, setVisualIdentity] = useState<VisualIdentity | null>(null);
+    
+    // Logo Generator State
+    const [generatedLogo, setGeneratedLogo] = useState<string | null>(null);
+    const [isGeneratingLogo, setIsGeneratingLogo] = useState(false);
+    const [logoError, setLogoError] = useState<string | null>(null);
+
+    // Load visual identity on mount
+    useEffect(() => {
+        try {
+            const savedIdentityJSON = localStorage.getItem(IDENTITY_KEY);
+            if (savedIdentityJSON) {
+                setVisualIdentity(JSON.parse(savedIdentityJSON));
+            }
+        } catch (error) {
+            console.error("Falha ao carregar identidade visual:", error);
+        }
+    }, []);
 
     // Save magazine state to localStorage whenever it changes
     useEffect(() => {
@@ -36,6 +56,7 @@ const App: React.FC = () => {
                 // Save a "light" version without base64 image data to prevent quota errors.
                 const lightMagazine = {
                     ...magazine,
+                    logoUrl: '',
                     coverImage: '',
                     articles: magazine.articles.map(article => ({
                         ...article,
@@ -72,7 +93,7 @@ const App: React.FC = () => {
         
         try {
             addLoadingMessage(isDeepMode ? 'Acessando arquivos secretos da Warp Zone...' : 'Consultando os anais dos games...');
-            const structure = await geminiService.generateMagazineStructure(topic, isDeepMode);
+            const structure = await geminiService.generateMagazineStructure(topic, isDeepMode, visualIdentity?.magazineName);
             
             setMagazineStructure(structure);
             setInitialStructure(structure);
@@ -87,6 +108,7 @@ const App: React.FC = () => {
             const skeletonMagazine: Magazine = {
                 id: newId,
                 title: structure.title,
+                logoUrl: visualIdentity?.logoUrl,
                 coverImagePrompt: structure.coverImagePrompt,
                 coverImage: '',
                 articles: structure.articles.map((articleStruct, index) => ({
@@ -262,6 +284,9 @@ const App: React.FC = () => {
         setGenerationStatus({});
         setError(null);
         setCurrentCreationType(null);
+        setGeneratedLogo(null);
+        setIsGeneratingLogo(false);
+        setLogoError(null);
         setView('hub');
     };
     
@@ -478,6 +503,10 @@ const App: React.FC = () => {
                     savedMagazine.id = `mag_${Date.now()}`;
                 }
 
+                if (visualIdentity?.logoUrl) {
+                    savedMagazine.logoUrl = visualIdentity.logoUrl;
+                }
+
                 setMagazine(savedMagazine);
                 setMagazineStructure(savedStructure);
                 setInitialStructure(savedStructure);
@@ -557,6 +586,36 @@ const App: React.FC = () => {
         setIsHistoryPanelOpen(false);
     };
 
+    const handleGoToLogoGenerator = () => {
+        setView('logoGenerator');
+    };
+
+    const handleGenerateLogo = async (prompt: string) => {
+        setIsGeneratingLogo(true);
+        setGeneratedLogo(null);
+        setLogoError(null);
+        try {
+            const logo = await geminiService.generateLogo(prompt);
+            setGeneratedLogo(logo);
+        } catch (err: any) {
+            console.error(err);
+            setLogoError(`Ocorreu um erro ao gerar o logo: ${err.message}. Tente novamente.`);
+        } finally {
+            setIsGeneratingLogo(false);
+        }
+    };
+
+    const handleSaveIdentity = (name: string, logoUrl: string) => {
+        const newIdentity: VisualIdentity = { magazineName: name, logoUrl };
+        setVisualIdentity(newIdentity);
+        try {
+            localStorage.setItem(IDENTITY_KEY, JSON.stringify(newIdentity));
+            alert("Identidade visual salva com sucesso!");
+        } catch (error) {
+            console.error("Falha ao salvar identidade visual:", error);
+            setLogoError("Não foi possível salvar a identidade visual. O armazenamento pode estar cheio.");
+        }
+    };
 
     const renderContent = () => {
         if (error && !isLoading && !isGeneratingAll) {
@@ -599,12 +658,25 @@ const App: React.FC = () => {
                 ) : null;
              case 'create':
                 return currentCreationType ? <CreateByTopic type={currentCreationType} onGenerate={handleGenerate} onBack={handleBackToHub} /> : null;
+            case 'logoGenerator':
+                return (
+                    <LogoGenerator
+                        onGenerate={handleGenerateLogo}
+                        onBack={handleBackToHub}
+                        isLoading={isGeneratingLogo}
+                        generatedLogo={generatedLogo}
+                        error={logoError}
+                        onSaveIdentity={handleSaveIdentity}
+                        initialMagazineName={visualIdentity?.magazineName}
+                    />
+                );
             case 'hub':
             default:
                 return <CreationHub 
                     onSelectCreationType={handleSelectCreationType} 
                     onLoadSavedMagazine={handleLoadSavedMagazine}
                     hasSavedMagazine={hasSavedMagazine()}
+                    onGoToLogoGenerator={handleGoToLogoGenerator}
                 />;
         }
     };
@@ -626,7 +698,10 @@ const App: React.FC = () => {
                                 </svg>
                             </button>
                         )}
-                        <h1 className="text-xl md:text-2xl font-display text-cyan-300">Revista Retrô Gamer AI</h1>
+                        {visualIdentity?.logoUrl && (
+                            <img src={visualIdentity.logoUrl} alt="Logo da Revista" className="h-10 w-10 object-contain rounded-md hidden md:block" />
+                        )}
+                        <h1 className="text-xl md:text-2xl font-display text-cyan-300">{visualIdentity?.magazineName || 'Revista Retrô Gamer AI'}</h1>
                     </div>
                 </div>
             </header>
