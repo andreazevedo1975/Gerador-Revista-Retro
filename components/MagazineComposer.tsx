@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Magazine, MagazineStructure, GenerationState, ArticleImage, MagazineHistoryEntry, ArticleImagePrompt } from '../types';
 import HistoryPanel from './HistoryPanel';
 import EditableText from './EditableText';
@@ -27,7 +27,7 @@ const Spinner: React.FC = () => (
 
 const ResetIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 11.664 0M2.985 19.644L6.166 16.46m11.665-11.665h-4.992m0 0v4.992m0-4.993-3.181-3.183a8.25 8.25 0 0 0 -11.664 0M21.015 4.356L17.834 7.54m-11.665 11.665l3.181 3.183" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0M2.985 19.644L6.166 16.46m11.665-11.665h-4.992m0 0v4.992m0-4.993l-3.181-3.183a8.25 8.25 0 00-11.664 0M21.015 4.356L17.834 7.54m-11.665 11.665l3.181 3.183" />
     </svg>
 );
 
@@ -180,8 +180,32 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     onResetCoverPrompt,
     onResetArticlePrompts
 }) => {
-    const [expandedArticleIndex, setExpandedArticleIndex] = useState<number | null>(null);
+    const EXPANDED_ARTICLE_KEY = `composer_expanded_${magazine.id}`;
+
+    const [expandedArticleIndex, setExpandedArticleIndex] = useState<number | null>(() => {
+        try {
+            const savedIndex = localStorage.getItem(EXPANDED_ARTICLE_KEY);
+            return savedIndex ? JSON.parse(savedIndex) : null;
+        } catch (error) {
+            console.error("Falha ao carregar o índice do artigo expandido:", error);
+            return null;
+        }
+    });
+    
     const [qualitySelection, setQualitySelection] = useState<{ index: number; contentPrompt: string; tipsPrompt: string; imagePrompts: ArticleImagePrompt[] } | null>(null);
+
+    useEffect(() => {
+        try {
+            if (expandedArticleIndex !== null) {
+                localStorage.setItem(EXPANDED_ARTICLE_KEY, JSON.stringify(expandedArticleIndex));
+            } else {
+                localStorage.removeItem(EXPANDED_ARTICLE_KEY);
+            }
+        } catch (error) {
+            console.error("Falha ao salvar o índice do artigo expandido:", error);
+        }
+    }, [expandedArticleIndex, EXPANDED_ARTICLE_KEY]);
+    
     const isAllDone = Object.values(generationStatus).every(s => s === 'done');
     const isGeneratingAnything = Object.values(generationStatus).some(s => s === 'generating');
 

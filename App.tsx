@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity, EditorialConceptInputs, EditorialConceptData, FinalMagazineDraft } from './types';
 import * as geminiService from './services/geminiService';
@@ -17,7 +16,7 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const SAVE_KEY = 'retroGamerSaveData';
 const HISTORY_KEY = 'retroGamerHistory';
 const IDENTITY_KEY = 'retroGamerIdentity';
-const API_CALL_DELAY = 6100; // ~6.1 seconds, to stay within the stricter 10 RPM limit for image generation.
+const API_CALL_DELAY = 4000; // 4 seconds, to stay within ~15 requests/minute rate limit.
 
 const App: React.FC = () => {
     const [magazine, setMagazine] = useState<Magazine | null>(null);
@@ -148,18 +147,16 @@ const App: React.FC = () => {
         }
     };
 
-    const handleGenerateCover = useCallback(async (prompt: string, quality: 'standard' | 'high' = 'standard') => {
+    const handleGenerateCover = useCallback(async (prompt: string) => {
         if (!magazine || !magazineStructure) return;
 
         addLoadingMessage("Desenhando a capa em 16-bits...");
         setGenerationStatus(prev => ({ ...prev, cover: 'generating' }));
-        setError(null);
 
         try {
             const image = await geminiService.generateImage({
                 prompt: prompt,
-                type: 'cover',
-                quality: quality
+                type: 'cover'
             });
             setMagazine(prev => prev ? { ...prev, coverImage: image } : null);
             setGenerationStatus(prev => ({ ...prev, cover: 'done' }));
@@ -186,7 +183,6 @@ const App: React.FC = () => {
 
         addLoadingMessage(`Iniciando artigo: "${articleStruct.title}"...`);
         setGenerationStatus(prev => ({ ...prev, [articleId]: 'generating' }));
-        setError(null);
 
         try {
             addLoadingMessage(`- Gerando texto principal do artigo ${articleIndex + 1}...`);
@@ -238,16 +234,16 @@ const App: React.FC = () => {
         setLoadingMessages([]);
         setError(null);
     
-        addLoadingMessage("Iniciando a criação completa da revista em ALTA QUALIDADE...");
+        addLoadingMessage("Iniciando a criação completa da revista...");
         await delay(1000);
     
         // Use the latest prompts from the structure
-        await handleGenerateCover(magazineStructure.coverImagePrompt, 'high');
+        await handleGenerateCover(magazineStructure.coverImagePrompt);
     
         for (let i = 0; i < magazineStructure.articles.length; i++) {
             await delay(API_CALL_DELAY);
             const articleStruct = magazineStructure.articles[i];
-            await handleGenerateArticle(i, articleStruct.contentPrompt, articleStruct.tipsPrompt, articleStruct.imagePrompts, 'high');
+            await handleGenerateArticle(i, articleStruct.contentPrompt, articleStruct.tipsPrompt, articleStruct.imagePrompts);
         }
         
         addLoadingMessage("Geração concluída. Verifique o resultado no compositor.");
@@ -445,7 +441,6 @@ const App: React.FC = () => {
 
         const imageId = path;
         setIsGeneratingImage(prev => ({ ...prev, [imageId]: true }));
-        setError(null);
 
         try {
             let newImage: string;
@@ -667,6 +662,14 @@ const App: React.FC = () => {
     };
 
     const renderContent = () => {
+        if (error && !isLoading && !isGeneratingAll) {
+             return (
+                <div className="max-w-3xl mx-auto bg-red-900/50 p-4 mb-6 rounded-lg border border-red-500 text-center">
+                    <p className="text-red-300">{error}</p>
+                </div>
+             );
+        }
+
         switch(view) {
             case 'finalReview':
                 return (
@@ -752,29 +755,6 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </header>
-            
-            {error && (
-                <div className="sticky top-[72px] z-30 bg-red-900/90 backdrop-blur-sm border-b-2 border-red-500 text-red-200 p-4 shadow-lg">
-                    <div className="container mx-auto flex justify-between items-center gap-4">
-                        <div className="flex items-start gap-3">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 flex-shrink-0 text-red-400">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                            </svg>
-                            <span className="flex-1 font-semibold">{error}</span>
-                        </div>
-                        <button 
-                            onClick={() => setError(null)} 
-                            className="p-1 rounded-full hover:bg-red-800/50 transition-colors"
-                            aria-label="Fechar alerta de erro"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            )}
-
             <main className="container mx-auto p-4 md:p-8 flex-grow">
                {renderContent()}
             </main>
