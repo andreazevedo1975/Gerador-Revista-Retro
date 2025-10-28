@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity, EditorialConceptInputs, EditorialConceptData, FinalMagazineDraft } from './types';
 import * as geminiService from './services/geminiService';
@@ -16,7 +17,7 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const SAVE_KEY = 'retroGamerSaveData';
 const HISTORY_KEY = 'retroGamerHistory';
 const IDENTITY_KEY = 'retroGamerIdentity';
-const API_CALL_DELAY = 4000; // 4 seconds, to stay within ~15 requests/minute rate limit.
+const API_CALL_DELAY = 6100; // ~6.1 seconds, to stay within the stricter 10 RPM limit for image generation.
 
 const App: React.FC = () => {
     const [magazine, setMagazine] = useState<Magazine | null>(null);
@@ -147,7 +148,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleGenerateCover = useCallback(async (prompt: string) => {
+    const handleGenerateCover = useCallback(async (prompt: string, quality: 'standard' | 'high' = 'standard') => {
         if (!magazine || !magazineStructure) return;
 
         addLoadingMessage("Desenhando a capa em 16-bits...");
@@ -157,7 +158,8 @@ const App: React.FC = () => {
         try {
             const image = await geminiService.generateImage({
                 prompt: prompt,
-                type: 'cover'
+                type: 'cover',
+                quality: quality
             });
             setMagazine(prev => prev ? { ...prev, coverImage: image } : null);
             setGenerationStatus(prev => ({ ...prev, cover: 'done' }));
@@ -236,16 +238,16 @@ const App: React.FC = () => {
         setLoadingMessages([]);
         setError(null);
     
-        addLoadingMessage("Iniciando a criação completa da revista...");
+        addLoadingMessage("Iniciando a criação completa da revista em ALTA QUALIDADE...");
         await delay(1000);
     
         // Use the latest prompts from the structure
-        await handleGenerateCover(magazineStructure.coverImagePrompt);
+        await handleGenerateCover(magazineStructure.coverImagePrompt, 'high');
     
         for (let i = 0; i < magazineStructure.articles.length; i++) {
             await delay(API_CALL_DELAY);
             const articleStruct = magazineStructure.articles[i];
-            await handleGenerateArticle(i, articleStruct.contentPrompt, articleStruct.tipsPrompt, articleStruct.imagePrompts);
+            await handleGenerateArticle(i, articleStruct.contentPrompt, articleStruct.tipsPrompt, articleStruct.imagePrompts, 'high');
         }
         
         addLoadingMessage("Geração concluída. Verifique o resultado no compositor.");
