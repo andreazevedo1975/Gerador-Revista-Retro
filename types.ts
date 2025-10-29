@@ -1,5 +1,3 @@
-import { CreationType as ExistingCreationType } from './types';
-
 export type ImageType = 'logo' | 'gameplay' | 'artwork';
 export type GenerationState = 'pending' | 'generating' | 'done' | 'error';
 export type CreationType = 'console' | 'game' | 'guide' | 'developer' | 'rivalry' | 'soundtrack' | 'cover_choice' | 'editorial_concept';

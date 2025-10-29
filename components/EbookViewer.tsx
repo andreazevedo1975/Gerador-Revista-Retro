@@ -320,6 +320,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                         pdf.text(textLines, margin, y);
                         y += textHeight + 10;
                     } else if (isUnorderedItem) {
+                        if (isOl) olCounter = 1; // Reset OL counter if switching from OL to UL
                         isOl = false;
                         if (!isUl) y += 5;
                         isUl = true;
@@ -353,6 +354,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                     } else if (trimmedLine !== '') {
                         if (isUl || isOl) y += 10;
                         isUl = isOl = false;
+                        olCounter = 1; // Reset OL counter after list block
                         
                         addPageIfNeeded(20);
                         pdf.setFontSize(12);
