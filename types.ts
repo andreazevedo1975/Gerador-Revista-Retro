@@ -1,3 +1,4 @@
+// FIX: Removed self-import of 'CreationType' to resolve declaration conflict.
 export type ImageType = 'logo' | 'gameplay' | 'artwork';
 export type GenerationState = 'pending' | 'generating' | 'done' | 'error';
 export type CreationType = 'console' | 'game' | 'guide' | 'developer' | 'rivalry' | 'soundtrack' | 'cover_choice' | 'editorial_concept';
@@ -12,6 +13,12 @@ export interface ArticleImagePrompt {
     prompt: string;
 }
 
+export interface GameOfTheWeekStructure {
+    title: string;
+    description: string;
+    imagePrompt: string;
+}
+
 export interface ArticleStructure {
     title: string;
     contentPrompt: string;
@@ -23,6 +30,7 @@ export interface MagazineStructure {
     title: string;
     coverImagePrompt: string;
     articles: ArticleStructure[];
+    gameOfTheWeek: GameOfTheWeekStructure;
 }
 
 export interface ArticleImage {
@@ -39,6 +47,13 @@ export interface Article extends Omit<ArticleStructure, 'imagePrompts' | 'tipsPr
     tips: string;
 }
 
+export interface GameOfTheWeek {
+    title: string;
+    description: string;
+    imagePrompt: string;
+    imageUrl: string;
+}
+
 export interface Magazine {
     id: string;
     title: string;
@@ -46,6 +61,7 @@ export interface Magazine {
     coverImage: string; // base64 image data
     coverImagePrompt: string;
     articles: Article[];
+    gameOfTheWeek: GameOfTheWeek;
 }
 
 export interface MagazineHistoryEntry {
@@ -88,3 +104,11 @@ export interface FinalMagazineDraft {
     editorialConcept?: EditorialConceptData;
     magazine?: Magazine;
 }
+
+// Types for Undo/Redo functionality
+export interface TextEditHistoryState {
+    past: string[];
+    present: string;
+    future: string[];
+}
+export type TextEditHistory = Record<string, TextEditHistoryState>;

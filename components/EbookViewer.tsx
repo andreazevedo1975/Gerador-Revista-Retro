@@ -14,7 +14,7 @@ interface MagazineViewerProps {
 }
 
 declare const jspdf: any;
-declare const htmlDocx: any;
+declare const htmlToDocx: any;
 declare const saveAs: any;
 
 const renderMarkdown = (markdown: string) => {
@@ -543,7 +543,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                 </html>
             `;
             
-            const docxBlob = await htmlDocx.asBlob(fullHtml, {
+            const docxBlob = await htmlToDocx.asBlob(fullHtml, {
                 orientation: 'portrait',
                 margins: { top: 720, bottom: 720, left: 720, right: 720 }
             });

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity, EditorialConceptInputs, EditorialConceptData, FinalMagazineDraft } from './types';
+import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity, EditorialConceptInputs, EditorialConceptData, FinalMagazineDraft, TextEditHistory } from './types';
 import * as geminiService from './services/geminiService';
 import MagazineViewer from './components/EbookViewer';
 import LoadingOverlay from './components/LoadingOverlay';
@@ -45,6 +45,10 @@ const App: React.FC = () => {
     // Final Draft State
     const [finalMagazineDraft, setFinalMagazineDraft] = useState<FinalMagazineDraft>({});
 
+    // Undo/Redo State
+    const [textEditHistory, setTextEditHistory] = useState<TextEditHistory>({});
+    const [lastEditedPath, setLastEditedPath] = useState<string | null>(null);
+
 
     // Load visual identity on mount
     useEffect(() => {
@@ -74,6 +78,10 @@ const App: React.FC = () => {
                             url: '',
                         })),
                     })),
+                    gameOfTheWeek: {
+                        ...magazine.gameOfTheWeek,
+                        imageUrl: '',
+                    }
                 };
                 const saveData = {
                     magazine: lightMagazine,
@@ -86,9 +94,60 @@ const App: React.FC = () => {
         }
     }, [magazine, magazineStructure, view]);
 
+    // Keyboard shortcuts for Undo/Redo
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && lastEditedPath) {
+                if (e.key === 'z') {
+                    e.preventDefault();
+                    handleUndo(lastEditedPath);
+                } else if (e.key === 'y') {
+                    e.preventDefault();
+                    handleRedo(lastEditedPath);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [lastEditedPath]); // Dependency ensures we have the latest path
+
     const addLoadingMessage = useCallback((message: string) => {
         setLoadingMessages(prev => [...prev, message]);
     }, []);
+
+    const initializeTextHistory = (mag: Magazine, structure: MagazineStructure): TextEditHistory => {
+        const history: TextEditHistory = {};
+        const initField = (path: string, value: string) => {
+            history[path] = { past: [], present: value || '', future: [] };
+        };
+
+        initField('title', mag.title);
+        initField('coverImagePrompt', structure.coverImagePrompt);
+
+        initField('gameOfTheWeek.title', mag.gameOfTheWeek.title);
+        initField('gameOfTheWeek.description', mag.gameOfTheWeek.description);
+        initField('gameOfTheWeek.imagePrompt', structure.gameOfTheWeek.imagePrompt);
+
+        structure.articles.forEach((article, index) => {
+            initField(`articles.${index}.contentPrompt`, article.contentPrompt);
+            initField(`articles.${index}.tipsPrompt`, article.tipsPrompt);
+            article.imagePrompts.forEach((imgPrompt, imgIndex) => {
+                initField(`articles.${index}.imagePrompts.${imgIndex}.prompt`, imgPrompt.prompt);
+            });
+            
+            const magArticle = mag.articles[index];
+            if (magArticle) {
+                 initField(`articles.${index}.title`, magArticle.title);
+                 initField(`articles.${index}.content`, magArticle.content);
+                 initField(`articles.${index}.tips`, magArticle.tips);
+            }
+        });
+
+        return history;
+    };
 
     const handleGenerateStructure = async (topic: string, generationType: CreationType, isDeepMode: boolean) => {
         if (!topic.trim()) return;
@@ -107,7 +166,10 @@ const App: React.FC = () => {
             setMagazineStructure(structure);
             setInitialStructure(structure);
 
-            const status: Record<string, GenerationState> = { cover: 'pending' };
+            const status: Record<string, GenerationState> = { 
+                cover: 'pending',
+                gameOfTheWeek: 'pending',
+            };
             structure.articles.forEach((_, index) => {
                 status[`article-${index}`] = 'pending';
             });
@@ -133,9 +195,16 @@ const App: React.FC = () => {
                         url: '',
                     })),
                 })),
+                gameOfTheWeek: {
+                    title: structure.gameOfTheWeek.title,
+                    description: structure.gameOfTheWeek.description,
+                    imagePrompt: structure.gameOfTheWeek.imagePrompt,
+                    imageUrl: '',
+                }
             };
             setMagazine(skeletonMagazine);
             setHistory([]); // Reset history for new magazine
+            setTextEditHistory(initializeTextHistory(skeletonMagazine, structure)); // Initialize undo/redo history
             setView('composer');
 
         } catch (err: any) {
@@ -166,6 +235,31 @@ const App: React.FC = () => {
             setError(`Falha ao gerar a capa: ${err.message}`);
             setGenerationStatus(prev => ({ ...prev, cover: 'error' }));
             addLoadingMessage(`❌ Erro ao criar a capa.`);
+        }
+    }, [magazine, magazineStructure, addLoadingMessage]);
+
+    const handleGenerateGameOfTheWeekImage = useCallback(async (prompt: string) => {
+        if (!magazine || !magazineStructure) return;
+
+        addLoadingMessage("Criando destaque da semana...");
+        setGenerationStatus(prev => ({ ...prev, gameOfTheWeek: 'generating' }));
+
+        try {
+            const image = await geminiService.generateImage({
+                prompt: prompt,
+                type: 'highlight'
+            });
+            setMagazine(prev => prev ? { 
+                ...prev, 
+                gameOfTheWeek: { ...prev.gameOfTheWeek, imageUrl: image } 
+            } : null);
+            setGenerationStatus(prev => ({ ...prev, gameOfTheWeek: 'done' }));
+            addLoadingMessage("✅ Destaque finalizado com sucesso!");
+        } catch (err: any) {
+            console.error("Failed to generate Game of the Week image:", err);
+            setError(`Falha ao gerar a imagem de destaque: ${err.message}`);
+            setGenerationStatus(prev => ({ ...prev, gameOfTheWeek: 'error' }));
+            addLoadingMessage(`❌ Erro ao criar imagem de destaque.`);
         }
     }, [magazine, magazineStructure, addLoadingMessage]);
 
@@ -215,6 +309,13 @@ const App: React.FC = () => {
                 return { ...prev, articles: newArticles };
             });
 
+            // Update history with generated content
+            setTextEditHistory(prev => ({
+                ...prev,
+                [`articles.${articleIndex}.content`]: { ...prev[`articles.${articleIndex}.content`], present: content },
+                [`articles.${articleIndex}.tips`]: { ...prev[`articles.${articleIndex}.tips`], present: tips },
+            }));
+
             setGenerationStatus(prev => ({ ...prev, [articleId]: 'done' }));
             addLoadingMessage(`✅ Artigo "${articleStruct.title}" completo!`);
 
@@ -239,6 +340,8 @@ const App: React.FC = () => {
     
         // Use the latest prompts from the structure
         await handleGenerateCover(magazineStructure.coverImagePrompt);
+        await delay(API_CALL_DELAY);
+        await handleGenerateGameOfTheWeekImage(magazineStructure.gameOfTheWeek.imagePrompt);
     
         for (let i = 0; i < magazineStructure.articles.length; i++) {
             await delay(API_CALL_DELAY);
@@ -251,7 +354,7 @@ const App: React.FC = () => {
         
         setIsGeneratingAll(false);
     
-    }, [magazine, magazineStructure, handleGenerateCover, handleGenerateArticle, addLoadingMessage]);
+    }, [magazine, magazineStructure, handleGenerateCover, handleGenerateGameOfTheWeekImage, handleGenerateArticle, addLoadingMessage]);
     
     const handleGenerate = (topic: string, type: CreationType, isDeepMode: boolean) => {
         let prompt = '';
@@ -302,6 +405,8 @@ const App: React.FC = () => {
         setIsGeneratingLogo(false);
         setLogoError(null);
         setEditorialConcept(null);
+        setTextEditHistory({});
+        setLastEditedPath(null);
         setView('hub');
     };
     
@@ -313,32 +418,39 @@ const App: React.FC = () => {
     };
 
     const handleTextUpdate = useCallback((path: string, newText: string) => {
+        // Update main magazine state
         setMagazine(prevMagazine => {
             if (!prevMagazine) return null;
 
             const keys = path.split('.');
-            
-            if (keys.length === 1 && keys[0] === 'title') {
-                return { ...prevMagazine, title: newText };
-            }
-            
-            if (keys.length === 3 && keys[0] === 'articles') {
-                const articleIndex = parseInt(keys[1], 10);
-                const property = keys[2] as 'title' | 'content' | 'tips';
+            let newState = JSON.parse(JSON.stringify(prevMagazine)); // Deep copy
+            let current = newState;
 
-                const newArticles = [...prevMagazine.articles];
-                const oldArticle = newArticles[articleIndex];
-                
-                if (oldArticle && oldArticle[property] !== newText) {
-                     newArticles[articleIndex] = {
-                        ...oldArticle,
-                        [property]: newText
-                    };
-                    return { ...prevMagazine, articles: newArticles };
-                }
+            for (let i = 0; i < keys.length - 1; i++) {
+                current = current[keys[i]];
+                if (current === undefined) return prevMagazine; // Path doesn't exist
+            }
+
+            if (current[keys[keys.length - 1]] !== newText) {
+                current[keys[keys.length - 1]] = newText;
+                return newState;
             }
             
             return prevMagazine;
+        });
+
+        // Update undo/redo history
+        setLastEditedPath(path);
+        setTextEditHistory(prevHistory => {
+            const currentFieldHistory = prevHistory[path];
+            if (!currentFieldHistory || newText === currentFieldHistory.present) {
+                return prevHistory; // No change or history not initialized
+            }
+            const newPast = [...currentFieldHistory.past, currentFieldHistory.present];
+            return {
+                ...prevHistory,
+                [path]: { past: newPast, present: newText, future: [] }
+            };
         });
     }, []);
 
@@ -348,93 +460,126 @@ const App: React.FC = () => {
         // Update magazineStructure
         setMagazineStructure(prev => {
             if (!prev) return null;
-            const newStructure = JSON.parse(JSON.stringify(prev)); // Deep copy
-    
-            if (keys.length === 1 && keys[0] === 'coverImagePrompt') {
-                newStructure.coverImagePrompt = newText;
-            } else if (keys.length === 3 && keys[0] === 'articles') {
-                const index = parseInt(keys[1], 10);
-                const prop = keys[2] as 'contentPrompt' | 'tipsPrompt';
-                newStructure.articles[index][prop] = newText;
-            } else if (keys.length === 5 && keys[0] === 'articles' && keys[2] === 'imagePrompts' && keys[4] === 'prompt') {
-                const articleIndex = parseInt(keys[1], 10);
-                const imageIndex = parseInt(keys[3], 10);
-                newStructure.articles[articleIndex].imagePrompts[imageIndex].prompt = newText;
+            let newStructure = JSON.parse(JSON.stringify(prev)); // Deep copy
+            let current = newStructure;
+
+            for (let i = 0; i < keys.length - 1; i++) {
+                current = current[keys[i]];
+                 if (current === undefined) return prev;
             }
-    
+            current[keys[keys.length - 1]] = newText;
             return newStructure;
         });
     
         // Update magazine skeleton prompts for consistency
         setMagazine(prev => {
             if (!prev) return null;
-            const newMagazine = JSON.parse(JSON.stringify(prev));
-    
-            if (keys.length === 1 && keys[0] === 'coverImagePrompt') {
-                newMagazine.coverImagePrompt = newText;
-            } else if (keys.length === 3 && keys[0] === 'articles' && keys[2] === 'contentPrompt') {
-                const index = parseInt(keys[1], 10);
-                newMagazine.articles[index].contentPrompt = newText;
-            } else if (keys.length === 5 && keys[0] === 'articles' && keys[2] === 'imagePrompts' && keys[4] === 'prompt') {
-                const articleIndex = parseInt(keys[1], 10);
-                const imageIndex = parseInt(keys[3], 10);
-                newMagazine.articles[articleIndex].images[imageIndex].prompt = newText;
+            let newMagazine = JSON.parse(JSON.stringify(prev));
+             let current = newMagazine;
+
+            for (let i = 0; i < keys.length - 1; i++) {
+                current = current[keys[i]];
+                 if (current === undefined) return prev;
             }
-    
+            current[keys[keys.length - 1]] = newText;
             return newMagazine;
+        });
+
+        // Update undo/redo history for prompts
+        setLastEditedPath(path);
+        setTextEditHistory(prevHistory => {
+            const currentFieldHistory = prevHistory[path];
+             if (!currentFieldHistory || newText === currentFieldHistory.present) {
+                return prevHistory;
+            }
+            const newPast = [...currentFieldHistory.past, currentFieldHistory.present];
+            return {
+                ...prevHistory,
+                [path]: { past: newPast, present: newText, future: [] }
+            };
         });
     
     }, []);
+
+    const updateStateFromPath = useCallback((path: string, value: string) => {
+        const keys = path.split('.');
+        const isMagazineField = [
+            'title', 'articles.title', 'articles.content', 'articles.tips', 
+            'gameOfTheWeek.title', 'gameOfTheWeek.description'
+        ].some(p => path.startsWith(p));
+        
+        if (isMagazineField) {
+            handleTextUpdate(path, value);
+        } else {
+            handlePromptUpdate(path, value);
+        }
+    }, [handleTextUpdate, handlePromptUpdate]);
+
+    const handleUndo = (path: string) => {
+        setTextEditHistory(prev => {
+            const history = prev[path];
+            if (!history || history.past.length === 0) return prev;
+
+            const previousState = history.past[history.past.length - 1];
+            const newPast = history.past.slice(0, history.past.length - 1);
+            
+            // This is async, so call the update function outside of setState
+            updateStateFromPath(path, previousState); 
+
+            return {
+                ...prev,
+                [path]: {
+                    past: newPast,
+                    present: previousState,
+                    future: [history.present, ...history.future]
+                }
+            };
+        });
+        setLastEditedPath(path);
+    };
+
+    const handleRedo = (path: string) => {
+        setTextEditHistory(prev => {
+            const history = prev[path];
+            if (!history || history.future.length === 0) return prev;
+
+            const nextState = history.future[0];
+            const newFuture = history.future.slice(1);
+
+            updateStateFromPath(path, nextState);
+
+            return {
+                ...prev,
+                [path]: {
+                    past: [...history.past, history.present],
+                    present: nextState,
+                    future: newFuture
+                }
+            };
+        });
+        setLastEditedPath(path);
+    };
 
     const handleResetCoverPrompt = useCallback(() => {
         if (!initialStructure || !magazineStructure) return;
 
         const originalCoverPrompt = initialStructure.coverImagePrompt;
+        handlePromptUpdate('coverImagePrompt', originalCoverPrompt);
 
-        // Update the editable magazineStructure
-        setMagazineStructure(prev => {
-            if (!prev) return null;
-            return { ...prev, coverImagePrompt: originalCoverPrompt };
-        });
-
-        // Update the magazine skeleton for consistency
-        setMagazine(prev => {
-            if (!prev) return null;
-            return { ...prev, coverImagePrompt: originalCoverPrompt };
-        });
-
-    }, [initialStructure, magazineStructure]);
+    }, [initialStructure, magazineStructure, handlePromptUpdate]);
 
     const handleResetArticlePrompts = useCallback((articleIndex: number) => {
         if (!initialStructure || !magazineStructure) return;
 
         const originalArticleStructure = initialStructure.articles[articleIndex];
-
-        // Update the editable magazineStructure
-        const newStructure = { ...magazineStructure };
-        newStructure.articles = [...magazineStructure.articles];
-        newStructure.articles[articleIndex] = originalArticleStructure;
-        setMagazineStructure(newStructure);
-
-        // Update the magazine skeleton for consistency
-        setMagazine(prev => {
-            if (!prev) return null;
-            const newMagazine = { ...prev };
-            newMagazine.articles = [...prev.articles];
-
-            const newArticle = { ...newMagazine.articles[articleIndex] };
-            newArticle.contentPrompt = originalArticleStructure.contentPrompt;
-            newArticle.images = newArticle.images.map((img, i) => ({
-                ...img,
-                prompt: originalArticleStructure.imagePrompts[i].prompt,
-                type: originalArticleStructure.imagePrompts[i].type,
-            }));
-            
-            newMagazine.articles[articleIndex] = newArticle;
-            return newMagazine;
+        
+        handlePromptUpdate(`articles.${articleIndex}.contentPrompt`, originalArticleStructure.contentPrompt);
+        handlePromptUpdate(`articles.${articleIndex}.tipsPrompt`, originalArticleStructure.tipsPrompt);
+        originalArticleStructure.imagePrompts.forEach((imgPrompt, imgIndex) => {
+            handlePromptUpdate(`articles.${articleIndex}.imagePrompts.${imgIndex}.prompt`, imgPrompt.prompt);
         });
 
-    }, [initialStructure, magazineStructure]);
+    }, [initialStructure, magazineStructure, handlePromptUpdate]);
 
     const handleImageRegenerate = useCallback(async (path: string, options: { quality: 'standard' | 'high'; modificationPrompt?: string; }) => {
         if (!magazine) return;
@@ -541,11 +686,17 @@ const App: React.FC = () => {
 
 
                 // Reconstruct status to allow regeneration of missing images
-                const status: Record<string, GenerationState> = { cover: 'pending' };
+                const status: Record<string, GenerationState> = { 
+                    cover: 'pending',
+                    gameOfTheWeek: 'pending' 
+                };
                 savedMagazine.articles.forEach((_: any, index: number) => {
                     status[`article-${index}`] = 'pending';
                 });
                 setGenerationStatus(status);
+
+                // Initialize undo/redo history for loaded magazine
+                setTextEditHistory(initializeTextHistory(savedMagazine, savedStructure));
                 
                 // Go to the composer to finish generating
                 setView('composer');
@@ -568,6 +719,10 @@ const App: React.FC = () => {
                 ...article,
                 images: article.images.map(image => ({ ...image, url: '' })),
             })),
+            gameOfTheWeek: {
+                ...magazine.gameOfTheWeek,
+                imageUrl: '',
+            }
         };
 
         const newEntry: MagazineHistoryEntry = {
@@ -591,11 +746,19 @@ const App: React.FC = () => {
     const handleRevertToVersion = (versionMagazine: Magazine) => {
         setMagazine(versionMagazine);
     
-        const status: Record<string, GenerationState> = { cover: 'pending' };
+        const status: Record<string, GenerationState> = { 
+            cover: 'pending',
+            gameOfTheWeek: 'pending',
+        };
         versionMagazine.articles.forEach((_, index: number) => {
             status[`article-${index}`] = 'pending';
         });
         setGenerationStatus(status);
+        
+        // When reverting, we should probably reset the undo/redo history
+        if (magazineStructure) {
+            setTextEditHistory(initializeTextHistory(versionMagazine, magazineStructure));
+        }
         
         setIsHistoryPanelOpen(false);
     };
@@ -688,16 +851,21 @@ const App: React.FC = () => {
                         generationStatus={generationStatus}
                         history={history}
                         isHistoryPanelOpen={isHistoryPanelOpen}
+                        textEditHistory={textEditHistory}
                         onGenerateCover={handleGenerateCover}
+                        onGenerateGameOfTheWeekImage={handleGenerateGameOfTheWeekImage}
                         onGenerateArticle={handleGenerateArticle}
                         onGenerateAll={handleGenerateAll}
                         onGoToFinalReview={handleConfirmMagazineAndGoToReview}
                         onSaveToHistory={handleSaveToHistory}
                         onRevertToVersion={handleRevertToVersion}
                         onToggleHistoryPanel={() => setIsHistoryPanelOpen(prev => !prev)}
+                        onTextUpdate={handleTextUpdate}
                         onPromptUpdate={handlePromptUpdate}
                         onResetCoverPrompt={handleResetCoverPrompt}
                         onResetArticlePrompts={handleResetArticlePrompts}
+                        onUndo={handleUndo}
+                        onRedo={handleRedo}
                     />
                 ) : null;
              case 'create':

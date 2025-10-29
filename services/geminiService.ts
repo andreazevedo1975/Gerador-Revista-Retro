@@ -87,9 +87,28 @@ const structureSchema = {
                 },
                 required: ["title", "contentPrompt", "imagePrompts", "tipsPrompt"],
             }
+        },
+        gameOfTheWeek: {
+            type: Type.OBJECT,
+            description: "Uma seção de destaque para o 'Jogo da Semana', relacionado ao tema principal da revista.",
+            properties: {
+                title: {
+                    type: Type.STRING,
+                    description: "O título do jogo em destaque, em português do Brasil. Ex: 'Jogo da Semana: Super Metroid'."
+                },
+                description: {
+                    type: Type.STRING,
+                    description: "Uma descrição curta e empolgante (2-3 frases) sobre por que este jogo é o destaque da semana, em português do Brasil."
+                },
+                imagePrompt: {
+                    type: Type.STRING,
+                    description: "Um prompt de imagem em inglês, detalhado e no estilo 'vibrant 16-bit pixel art', para a imagem principal do Jogo da Semana. Deve ser uma cena de arte promocional épica."
+                }
+            },
+            required: ["title", "description", "imagePrompt"],
         }
     },
-    required: ["title", "coverImagePrompt", "articles"],
+    required: ["title", "coverImagePrompt", "articles", "gameOfTheWeek"],
 };
 
 export async function generateMagazineStructure(idea: string, isDeepMode: boolean, magazineName?: string): Promise<MagazineStructure> {
@@ -100,19 +119,27 @@ export async function generateMagazineStructure(idea: string, isDeepMode: boolea
     let prompt = `
         Você é um editor de uma revista de videogames retrô dos anos 90 chamada "${magazineNameToUse}".
         Crie a estrutura para uma nova edição da revista com base na seguinte pauta: "${idea}".
-        A revista deve ter um tom divertido, informativo e nostálgico e conter exatamente 5 artigos.
-        Para a capa, crie um prompt de imagem em inglês que seja extremamente detalhado e evocativo. O objetivo é gerar uma arte de capa espetacular no estilo das revistas de videogame dos anos 90. Instrua a IA de imagem a usar um estilo 'vibrant 16-bit pixel art' ou '90s Japanese box art'. O prompt deve focar em uma cena de ação dinâmica, com composição cinematográfica, iluminação dramática e cores vibrantes, capturando a essência do tópico principal.
-        Para cada artigo, forneça um título, um prompt para gerar seu conteúdo, um prompt para uma seção de 'Dicas e Macetes', e um array com exatamente 3 prompts de imagem em inglês.
+        A revista deve ter um tom divertido, informativo e nostálgico.
 
-        As imagens devem ser relevantes para o artigo.
-        - Se o artigo for sobre um JOGO específico, os tipos de imagem devem ser 'logo', 'gameplay' e 'artwork'.
-        - Se o artigo for sobre um CONSOLE específico (como SNES, Mega Drive, NES, Master System), um dos prompts de imagem, do tipo 'artwork', deve ser para gerar uma imagem do hardware do console em pixel art. Os outros dois prompts podem ser de 'gameplay' de jogos icônicos para aquele console.
-        - Para outros tópicos (como um gênero de jogo ou um desenvolvedor), use a criatividade para definir prompts de imagem relevantes que se encaixem nos tipos 'logo', 'gameplay' e 'artwork'.
+        A estrutura deve conter:
+        1.  Um título de capa.
+        2.  Um prompt de imagem de capa em inglês, extremamente detalhado e evocativo no estilo 'vibrant 16-bit pixel art' ou '90s Japanese box art'.
+        3.  Uma seção de destaque "Jogo da Semana". Escolha um jogo icônico relacionado ao tema principal. Forneça um título para a seção, uma descrição curta e empolgante, e um prompt de imagem em inglês para uma arte espetacular do jogo.
+        4.  Um array com exatamente 5 artigos, cada um com:
+            - Título do artigo.
+            - Prompt para gerar o conteúdo do artigo.
+            - Prompt para uma seção de 'Dicas e Macetes'.
+            - Um array com exatamente 3 prompts de imagem em inglês (tipos: 'logo', 'gameplay', 'artwork').
+
+        As imagens dos artigos devem ser relevantes.
+        - Se o artigo for sobre um JOGO, os tipos devem ser 'logo', 'gameplay', 'artwork'.
+        - Se o artigo for sobre um CONSOLE, uma imagem deve ser do hardware do console (tipo 'artwork'), e as outras de 'gameplay' de jogos icônicos.
+        - Para outros temas, use a criatividade para prompts de 'logo', 'gameplay' e 'artwork'.
 
         Exemplos de prompts de imagem:
-        1.  'logo': "a stylized 16-bit pixel art logo for the game..."
-        2.  'gameplay': "a detailed 16-bit pixel art screenshot of an iconic moment from the game..."
-        3.  'artwork': "16-bit pixel art inspired by the game's official box art or promotional material..." OU "a detailed 16-bit pixel art illustration of the Super Nintendo (SNES) console on a table".
+        - 'logo': "a stylized 16-bit pixel art logo for the game..."
+        - 'gameplay': "a detailed 16-bit pixel art screenshot of an iconic moment from the game..."
+        - 'artwork': "16-bit pixel art inspired by the game's official box art..." OU "a detailed 16-bit pixel art illustration of the Super Nintendo console".
         
         O resultado deve ser um objeto JSON bem formatado.
     `;
@@ -140,6 +167,9 @@ export async function generateMagazineStructure(idea: string, isDeepMode: boolea
                     throw new Error("Validation failed: Each article must have exactly 3 image prompts.");
                 }
             });
+            if (!parsed.gameOfTheWeek) {
+                throw new Error("Validation failed: 'gameOfTheWeek' section is missing.");
+            }
             return parsed as MagazineStructure;
         } catch (e) {
             console.error("Failed to parse or validate JSON from Gemini:", jsonText, e);
@@ -162,10 +192,12 @@ export async function generateText(prompt: string): Promise<string> {
     });
 }
 
-const getAspectRatioForType = (type: ImageType): '3:4' | '16:9' => {
+const getAspectRatioForType = (type: ImageType | 'highlight'): '3:4' | '16:9' => {
     switch (type) {
         case 'artwork':
             return '3:4'; // Box art style
+        case 'highlight':
+            return '16:9'; // Highlight image
         case 'logo':
         case 'gameplay':
             return '16:9'; // Widescreen for logos and gameplay
@@ -176,7 +208,7 @@ const getAspectRatioForType = (type: ImageType): '3:4' | '16:9' => {
 
 interface GenerateImageOptions {
     prompt: string;
-    type: ImageType | 'cover';
+    type: ImageType | 'cover' | 'highlight';
     quality?: 'standard' | 'high';
     modificationPrompt?: string;
     isRegeneration?: boolean;
@@ -191,7 +223,7 @@ export async function generateImage({
 }: GenerateImageOptions): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return withRetry(async () => {
-        const aspectRatio = type === 'cover' ? '3:4' : getAspectRatioForType(type as ImageType);
+        const aspectRatio = type === 'cover' ? '3:4' : getAspectRatioForType(type);
         
         let finalPrompt = prompt;
         

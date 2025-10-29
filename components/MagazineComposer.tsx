@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Magazine, MagazineStructure, GenerationState, ArticleImage, MagazineHistoryEntry, ArticleImagePrompt } from '../types';
+import { Magazine, MagazineStructure, GenerationState, ArticleImage, MagazineHistoryEntry, ArticleImagePrompt, TextEditHistory } from '../types';
 import HistoryPanel from './HistoryPanel';
 import EditableText from './EditableText';
 
@@ -9,16 +9,21 @@ interface MagazineComposerProps {
     generationStatus: Record<string, GenerationState>;
     history: MagazineHistoryEntry[];
     isHistoryPanelOpen: boolean;
+    textEditHistory: TextEditHistory;
     onGenerateCover: (prompt: string) => void;
+    onGenerateGameOfTheWeekImage: (prompt: string) => void;
     onGenerateArticle: (index: number, contentPrompt: string, tipsPrompt: string, imagePrompts: ArticleImagePrompt[], quality: 'standard' | 'high') => void;
     onGenerateAll: () => void;
     onGoToFinalReview: () => void;
     onSaveToHistory: () => void;
     onRevertToVersion: (magazine: Magazine) => void;
     onToggleHistoryPanel: () => void;
+    onTextUpdate: (path: string, newText: string) => void;
     onPromptUpdate: (path: string, newText: string) => void;
     onResetCoverPrompt: () => void;
     onResetArticlePrompts: (index: number) => void;
+    onUndo: (path: string) => void;
+    onRedo: (path: string) => void;
 }
 
 const Spinner: React.FC = () => (
@@ -28,6 +33,18 @@ const Spinner: React.FC = () => (
 const ResetIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0M2.985 19.644L6.166 16.46m11.665-11.665h-4.992m0 0v4.992m0-4.993l-3.181-3.183a8.25 8.25 0 00-11.664 0M21.015 4.356L17.834 7.54m-11.665 11.665l3.181 3.183" />
+    </svg>
+);
+
+const UndoIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+    </svg>
+);
+
+const RedoIcon: React.FC<{className?: string}> = ({ className }) => (
+     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
     </svg>
 );
 
@@ -169,16 +186,21 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     generationStatus,
     history,
     isHistoryPanelOpen,
+    textEditHistory,
     onGenerateCover,
+    onGenerateGameOfTheWeekImage,
     onGenerateArticle,
     onGenerateAll,
     onGoToFinalReview,
     onSaveToHistory,
     onRevertToVersion,
     onToggleHistoryPanel,
+    onTextUpdate,
     onPromptUpdate,
     onResetCoverPrompt,
-    onResetArticlePrompts
+    onResetArticlePrompts,
+    onUndo,
+    onRedo,
 }) => {
     const EXPANDED_ARTICLE_KEY = `composer_expanded_${magazine.id}`;
 
@@ -220,6 +242,37 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
         setQualitySelection(null);
     };
 
+    const UndoRedoButtons: React.FC<{ path: string }> = ({ path }) => {
+        const historyState = textEditHistory[path];
+        const canUndo = historyState && historyState.past.length > 0;
+        const canRedo = historyState && historyState.future.length > 0;
+
+        const handleMouseDown = (e: React.MouseEvent) => e.preventDefault();
+
+        return (
+            <div className="flex flex-col gap-1 ml-2 flex-shrink-0">
+                <button
+                    onClick={() => onUndo(path)}
+                    disabled={!canUndo}
+                    onMouseDown={handleMouseDown}
+                    className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Desfazer (Ctrl+Z)"
+                >
+                    <UndoIcon className="w-4 h-4" />
+                </button>
+                <button
+                    onClick={() => onRedo(path)}
+                    disabled={!canRedo}
+                    onMouseDown={handleMouseDown}
+                    className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Refazer (Ctrl+Y)"
+                >
+                    <RedoIcon className="w-4 h-4" />
+                </button>
+            </div>
+        );
+    };
+
     return (
         <div className="max-w-4xl mx-auto space-y-8">
              {isHistoryPanelOpen && (
@@ -256,8 +309,16 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
             )}
             <header className="text-center">
                 <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Compositor da Revista</h2>
-                <p className="text-lg text-gray-400 leading-relaxed">Gere cada seção da sua revista. Você pode editar os prompts antes de gerar. Quando tudo estiver pronto, clique em "Visualizar Revista".</p>
-                <h3 className="text-2xl font-display mt-4 text-cyan-300 break-words">{`"${magazine.title}"`}</h3>
+                <p className="text-lg text-gray-400 leading-relaxed">Gere cada seção da sua revista. Você pode editar os prompts antes de gerar. Quando tudo estiver pronto, clique em "OK".</p>
+                <div className="flex items-center justify-center gap-2 mt-4">
+                     <EditableText
+                        tag="h3"
+                        text={magazine.title}
+                        onSave={(newText) => onTextUpdate('title', newText)}
+                        className="text-2xl font-display text-cyan-300 break-words"
+                    />
+                    <UndoRedoButtons path="title" />
+                </div>
             </header>
 
             <div className="flex justify-center items-center gap-2 flex-wrap p-4 bg-gray-800/50 rounded-lg">
@@ -290,6 +351,66 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
             </div>
 
             <div className="space-y-6">
+                 {/* Game of the Week Section */}
+                 <section className="bg-gray-800 p-6 rounded-lg shadow-lg border-2 border-dashed border-yellow-400/50">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h4 className="text-2xl font-display text-yellow-300">Destaque: Jogo da Semana</h4>
+                             <div className="flex items-center gap-2 mt-1">
+                                <EditableText
+                                    tag="p"
+                                    text={magazine.gameOfTheWeek.title}
+                                    onSave={(newText) => onTextUpdate('gameOfTheWeek.title', newText)}
+                                    className="text-lg text-yellow-100 font-bold"
+                                />
+                                <UndoRedoButtons path="gameOfTheWeek.title" />
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <StatusIndicator status={generationStatus.gameOfTheWeek} />
+                            <GenerateButton status={generationStatus.gameOfTheWeek} onClick={() => onGenerateGameOfTheWeekImage(magazine.gameOfTheWeek.imagePrompt)} text="Gerar Imagem" />
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-6 items-start">
+                        <div className="space-y-4">
+                            <div>
+                                <h5 className="font-bold text-cyan-300 mb-1">Descrição</h5>
+                                 <div className="flex items-start gap-2">
+                                    <EditableText
+                                        tag="div"
+                                        text={magazine.gameOfTheWeek.description}
+                                        onSave={(newText) => onTextUpdate('gameOfTheWeek.description', newText)}
+                                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                        isTextArea
+                                    />
+                                    <UndoRedoButtons path="gameOfTheWeek.description" />
+                                </div>
+                            </div>
+                             <div>
+                                <h5 className="font-bold text-cyan-300 mb-1">Prompt da Imagem</h5>
+                                <div className="flex items-start gap-2">
+                                    <EditableText
+                                        tag="div"
+                                        text={magazine.gameOfTheWeek.imagePrompt}
+                                        onSave={(newText) => onPromptUpdate('gameOfTheWeek.imagePrompt', newText)}
+                                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                        isTextArea
+                                    />
+                                    <UndoRedoButtons path="gameOfTheWeek.imagePrompt" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-center items-center bg-gray-900/50 min-h-[200px] rounded h-full">
+                            {generationStatus.gameOfTheWeek === 'generating' && <Spinner />}
+                            {magazine.gameOfTheWeek.imageUrl && <img src={magazine.gameOfTheWeek.imageUrl} alt="Imagem do Jogo da Semana" className="max-h-60 w-full object-cover rounded" />}
+                            {generationStatus.gameOfTheWeek === 'pending' && <p className="text-gray-500">Aguardando geração...</p>}
+                            {generationStatus.gameOfTheWeek === 'error' && <p className="text-red-400">Falha ao gerar imagem.</p>}
+                        </div>
+                    </div>
+                </section>
+
+
                 {/* Cover Section */}
                 <section className="bg-gray-800 p-6 rounded-lg shadow-lg border border-fuchsia-500/20">
                     <div className="flex justify-between items-start mb-4">
@@ -312,13 +433,16 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                             <GenerateButton status={generationStatus.cover} onClick={() => onGenerateCover(structure.coverImagePrompt)} text="Gerar Capa" />
                         </div>
                     </div>
-                    <EditableText
-                        tag="div"
-                        text={structure.coverImagePrompt}
-                        onSave={(newText) => onPromptUpdate('coverImagePrompt', newText)}
-                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 mb-4"
-                        isTextArea
-                    />
+                    <div className="flex items-start gap-2 mb-4">
+                        <EditableText
+                            tag="div"
+                            text={structure.coverImagePrompt}
+                            onSave={(newText) => onPromptUpdate('coverImagePrompt', newText)}
+                            className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                            isTextArea
+                        />
+                        <UndoRedoButtons path="coverImagePrompt" />
+                    </div>
                      <div className="flex justify-center items-center bg-gray-900/50 min-h-[320px] rounded">
                         {generationStatus.cover === 'generating' && <Spinner />}
                         {magazine.coverImage && <img src={magazine.coverImage} alt="Capa gerada" className="max-h-80 object-contain rounded" />}
@@ -379,23 +503,29 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                                     <div className="space-y-4 mb-6">
                                         <div>
                                             <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt do Conteúdo</h6>
-                                            <EditableText
-                                                tag="div"
-                                                text={article.contentPrompt}
-                                                onSave={(newText) => onPromptUpdate(`articles.${index}.contentPrompt`, newText)}
-                                                className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700"
-                                                isTextArea
-                                            />
+                                            <div className="flex items-start gap-2">
+                                                <EditableText
+                                                    tag="div"
+                                                    text={article.contentPrompt}
+                                                    onSave={(newText) => onPromptUpdate(`articles.${index}.contentPrompt`, newText)}
+                                                    className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                                    isTextArea
+                                                />
+                                                <UndoRedoButtons path={`articles.${index}.contentPrompt`} />
+                                            </div>
                                         </div>
                                         <div>
                                             <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt de Dicas</h6>
-                                            <EditableText
-                                                tag="div"
-                                                text={article.tipsPrompt}
-                                                onSave={(newText) => onPromptUpdate(`articles.${index}.tipsPrompt`, newText)}
-                                                className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700"
-                                                isTextArea
-                                            />
+                                             <div className="flex items-start gap-2">
+                                                <EditableText
+                                                    tag="div"
+                                                    text={article.tipsPrompt}
+                                                    onSave={(newText) => onPromptUpdate(`articles.${index}.tipsPrompt`, newText)}
+                                                    className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                                    isTextArea
+                                                />
+                                                <UndoRedoButtons path={`articles.${index}.tipsPrompt`} />
+                                            </div>
                                         </div>
                                         <div>
                                             <h6 className="font-display text-lg text-cyan-400 mb-2">Prompts de Imagem</h6>
@@ -403,13 +533,16 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                                                 {article.imagePrompts.map((imgPrompt, imgIndex) => (
                                                     <div key={imgIndex}>
                                                         <label className="text-xs font-bold text-cyan-400 uppercase">{imgPrompt.type}</label>
-                                                        <EditableText
-                                                            tag="div"
-                                                            text={imgPrompt.prompt}
-                                                            onSave={(newText) => onPromptUpdate(`articles.${index}.imagePrompts.${imgIndex}.prompt`, newText)}
-                                                            className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700"
-                                                            isTextArea
-                                                        />
+                                                        <div className="flex items-start gap-2">
+                                                            <EditableText
+                                                                tag="div"
+                                                                text={imgPrompt.prompt}
+                                                                onSave={(newText) => onPromptUpdate(`articles.${index}.imagePrompts.${imgIndex}.prompt`, newText)}
+                                                                className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                                                isTextArea
+                                                            />
+                                                            <UndoRedoButtons path={`articles.${index}.imagePrompts.${imgIndex}.prompt`} />
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
