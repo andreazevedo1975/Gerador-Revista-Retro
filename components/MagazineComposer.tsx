@@ -10,9 +10,11 @@ interface MagazineComposerProps {
     history: MagazineHistoryEntry[];
     isHistoryPanelOpen: boolean;
     textEditHistory: TextEditHistory;
+    isGeneratingTips: Record<string, boolean>;
     onGenerateCover: (prompt: string) => void;
     onGenerateGameOfTheWeekImage: (prompt: string) => void;
     onGenerateArticle: (index: number, contentPrompt: string, tipsPrompt: string, imagePrompts: ArticleImagePrompt[], quality: 'standard' | 'high') => void;
+    onGenerateArticleTips: (index: number) => void;
     onGenerateAll: () => void;
     onGoToFinalReview: () => void;
     onSaveToHistory: () => void;
@@ -187,9 +189,11 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     history,
     isHistoryPanelOpen,
     textEditHistory,
+    isGeneratingTips,
     onGenerateCover,
     onGenerateGameOfTheWeekImage,
     onGenerateArticle,
+    onGenerateArticleTips,
     onGenerateAll,
     onGoToFinalReview,
     onSaveToHistory,
@@ -526,6 +530,24 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                                                 />
                                                 <UndoRedoButtons path={`articles.${index}.tipsPrompt`} />
                                             </div>
+                                            {index === 0 && (
+                                                <div className="mt-2 flex justify-end">
+                                                    <button
+                                                        onClick={() => onGenerateArticleTips(index)}
+                                                        disabled={isGeneratingTips?.[articleId] || articleStatus === 'generating'}
+                                                        className="bg-purple-600 text-white font-bold py-2 px-4 rounded-md hover:bg-purple-700 disabled:bg-gray-600 transition-colors font-display text-xs flex items-center gap-2"
+                                                    >
+                                                        {isGeneratingTips?.[articleId] ? (
+                                                            <>
+                                                                <div className="w-4 h-4 border-2 border-t-2 border-t-white border-gray-600/50 rounded-full animate-spin"></div>
+                                                                <span>Gerando...</span>
+                                                            </>
+                                                        ) : (
+                                                        "Gerar Apenas Dicas com IA"
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <h6 className="font-display text-lg text-cyan-400 mb-2">Prompts de Imagem</h6>

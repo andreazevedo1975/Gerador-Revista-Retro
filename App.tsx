@@ -28,6 +28,7 @@ const App: React.FC = () => {
     const [loadingMessages, setLoadingMessages] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [isGeneratingImage, setIsGeneratingImage] = useState<Record<string, boolean>>({});
+    const [isGeneratingTips, setIsGeneratingTips] = useState<Record<string, boolean>>({});
     const [view, setView] = useState<View>('hub');
     const [currentCreationType, setCurrentCreationType] = useState<CreationType | null>(null);
     const [history, setHistory] = useState<MagazineHistoryEntry[]>([]);
@@ -326,6 +327,50 @@ const App: React.FC = () => {
             addLoadingMessage(`❌ Erro ao gerar o artigo: "${articleStruct.title}".`);
         }
     }, [magazine, magazineStructure, addLoadingMessage]);
+
+    const handleGenerateArticleTips = useCallback(async (articleIndex: number) => {
+        if (!magazineStructure) return;
+
+        const articleId = `article-${articleIndex}`;
+        addLoadingMessage(`- Procurando dicas e segredos para o artigo ${articleIndex + 1}...`);
+        setIsGeneratingTips(prev => ({ ...prev, [articleId]: true }));
+        setError(null);
+
+        try {
+            const tipsPrompt = magazineStructure.articles[articleIndex].tipsPrompt;
+            const tips = await geminiService.generateText(tipsPrompt);
+
+            setMagazine(prev => {
+                if (!prev) return null;
+                const newArticles = [...prev.articles];
+                newArticles[articleIndex] = {
+                    ...newArticles[articleIndex],
+                    tips,
+                };
+                return { ...prev, articles: newArticles };
+            });
+
+            // Update history for undo/redo
+            setTextEditHistory(prev => {
+                const path = `articles.${articleIndex}.tips`;
+                const currentFieldHistory = prev[path];
+                if (!currentFieldHistory) return prev;
+                const newPast = [...currentFieldHistory.past, currentFieldHistory.present];
+                return {
+                    ...prev,
+                    [path]: { ...currentFieldHistory, past: newPast, present: tips, future: [] },
+                };
+            });
+            addLoadingMessage(`✅ Dicas para o artigo ${articleIndex + 1} geradas!`);
+
+        } catch (err: any) {
+            console.error(`Failed to generate tips for article ${articleIndex}:`, err);
+            setError(`Falha ao gerar as dicas para o artigo: ${err.message}`);
+             addLoadingMessage(`❌ Erro ao gerar dicas para o artigo ${articleIndex + 1}.`);
+        } finally {
+            setIsGeneratingTips(prev => ({ ...prev, [articleId]: false }));
+        }
+    }, [magazineStructure, addLoadingMessage]);
 
 
     const handleGenerateAll = useCallback(async () => {
@@ -852,9 +897,11 @@ const App: React.FC = () => {
                         history={history}
                         isHistoryPanelOpen={isHistoryPanelOpen}
                         textEditHistory={textEditHistory}
+                        isGeneratingTips={isGeneratingTips}
                         onGenerateCover={handleGenerateCover}
                         onGenerateGameOfTheWeekImage={handleGenerateGameOfTheWeekImage}
                         onGenerateArticle={handleGenerateArticle}
+                        onGenerateArticleTips={handleGenerateArticleTips}
                         onGenerateAll={handleGenerateAll}
                         onGoToFinalReview={handleConfirmMagazineAndGoToReview}
                         onSaveToHistory={handleSaveToHistory}

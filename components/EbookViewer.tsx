@@ -242,7 +242,10 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
         )
     }
     
-    const finalTitle = identity?.magazineName || magazine.title;
+    const publicationName = identity?.magazineName;
+    const coverTitle = magazine.title;
+    const fileNameBase = (publicationName ? `${publicationName}_${coverTitle}` : coverTitle).replace(/\s+/g, '_').toLowerCase();
+    const shareTitle = publicationName ? `${publicationName}: ${coverTitle}` : coverTitle;
     const finalLogoUrl = identity?.logoUrl || magazine.logoUrl;
 
 
@@ -388,7 +391,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                 y += imgHeight + 30;
             }
     
-            const titleLines = pdf.splitTextToSize(finalTitle, contentWidth * 0.8);
+            const titleLines = pdf.splitTextToSize(coverTitle, contentWidth * 0.8);
             const titleHeight = pdf.getTextDimensions(titleLines).h;
             addPageIfNeeded(titleHeight);
             pdf.text(titleLines, pageWidth / 2, y, { align: 'center' });
@@ -441,7 +444,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                 parseMarkdownForPdf(article.tips);
             }
     
-            pdf.save(`${finalTitle.replace(/\s+/g, '_')}.pdf`);
+            pdf.save(`${fileNameBase}.pdf`);
     
         } catch (error) {
             console.error("Erro ao gerar PDF:", error);
@@ -530,12 +533,12 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                 <html lang="pt-BR">
                 <head>
                     <meta charset="UTF-8">
-                    <title>${finalTitle}</title>
+                    <title>${shareTitle}</title>
                     ${styles}
                 </head>
                 <body>
                     <div style="text-align: center; page-break-after: always;">
-                        <h1>${finalTitle}</h1>
+                        <h1>${coverTitle}</h1>
                         ${magazine.coverImage ? `<p><img src="${magazine.coverImage}" style="width: 500px; max-width: 100%; height: auto;" alt="Capa da Revista"></p>` : ''}
                     </div>
                     ${articlesHtml}
@@ -548,7 +551,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                 margins: { top: 720, bottom: 720, left: 720, right: 720 }
             });
     
-            saveAs(docxBlob, `${finalTitle.replace(/\s+/g, '_')}.docx`);
+            saveAs(docxBlob, `${fileNameBase}.docx`);
     
         } catch (error) {
             console.error("Erro ao gerar DOCX:", error);
@@ -753,7 +756,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
     };
 
     const handleDownloadImage = (imageUrl: string, articleTitle: string, imageType: string) => {
-        const safeMagazineTitle = finalTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeMagazineTitle = (publicationName || 'revista').replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const safeArticleTitle = articleTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const fileName = `${safeMagazineTitle}_${safeArticleTitle}_${imageType}.jpg`;
         
@@ -767,8 +770,8 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
 
     const handleShare = async () => {
         const shareData = {
-            title: `Revista Retrô Gamer AI: ${finalTitle}`,
-            text: `Confira a revista "${finalTitle}" que eu criei usando a Retrô Gamer AI!`,
+            title: shareTitle,
+            text: `Confira a revista "${coverTitle}" que eu criei usando a Retrô Gamer AI!`,
             url: window.location.href,
         };
 
@@ -787,6 +790,29 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
     
     return (
         <div className="max-w-4xl mx-auto">
+             <style>{`
+                #magazine-content::after {
+                    content: "";
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-image: linear-gradient(
+                        rgba(0, 0, 0, 0) 50%,
+                        rgba(0, 0, 0, 0.1) 50%
+                    );
+                    background-size: 100% 3px;
+                    z-index: 2;
+                    pointer-events: none;
+                    animation: scanline-scroll 12s linear infinite;
+                }
+
+                @keyframes scanline-scroll {
+                    from { background-position: 0 0; }
+                    to { background-position: 0 300px; }
+                }
+            `}</style>
             <header className="text-center mb-8 bg-gray-800/50 p-6 rounded-lg border border-fuchsia-500/30">
                 <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Revisão Final da Revista Pronta</h2>
                 <p className="text-lg text-gray-400">Aqui está a sua revista completa. Revise o conteúdo, faça edições de última hora clicando nos textos e, quando estiver satisfeito, use os botões abaixo para compartilhar ou baixar.</p>
@@ -804,13 +830,13 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                     <div className="bg-gray-800 rounded-lg shadow-2xl p-6 border border-fuchsia-500/30 w-full max-w-sm" onClick={e => e.stopPropagation()}>
                         <h3 className="text-2xl font-display text-yellow-300 mb-6 text-center">Compartilhar Revista</h3>
                         <div className="flex justify-center items-center gap-6">
-                            <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(`Confira a revista "${finalTitle}" que criei com a Retrô Gamer AI!`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-cyan-400 transition-colors" title="Compartilhar no Twitter">
+                            <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(`Confira a revista "${coverTitle}" que criei com a Retrô Gamer AI!`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-cyan-400 transition-colors" title="Compartilhar no Twitter">
                                 <TwitterIcon />
                             </a>
                              <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-blue-500 transition-colors" title="Compartilhar no Facebook">
                                 <FacebookIcon />
                             </a>
-                            <a href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Confira a revista "${finalTitle}" que criei com a Retrô Gamer AI! ${window.location.href}`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-green-500 transition-colors" title="Compartilhar no WhatsApp">
+                            <a href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Confira a revista "${coverTitle}" que criei com a Retrô Gamer AI! ${window.location.href}`)}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-green-500 transition-colors" title="Compartilhar no WhatsApp">
                                 <WhatsAppIcon />
                             </a>
                         </div>
@@ -866,7 +892,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                         </div>
                         <EditableText
                             tag="h1"
-                            text={finalTitle}
+                            text={coverTitle}
                             onSave={(newText: string) => onTextUpdate('title', newText)}
                             className="text-4xl md:text-6xl font-display text-yellow-300 break-words"
                         />
