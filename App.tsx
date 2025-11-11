@@ -16,6 +16,7 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const SAVE_KEY = 'retroGamerSaveData';
 const HISTORY_KEY = 'retroGamerHistory';
 const IDENTITY_KEY = 'retroGamerIdentity';
+const EDITORIAL_CONCEPT_KEY = 'retroGamerEditorialConcept';
 const API_CALL_DELAY = 4000; // 4 seconds, to stay within ~15 requests/minute rate limit.
 
 const App: React.FC = () => {
@@ -51,15 +52,19 @@ const App: React.FC = () => {
     const [lastEditedPath, setLastEditedPath] = useState<string | null>(null);
 
 
-    // Load visual identity on mount
+    // Load visual identity and editorial concept on mount
     useEffect(() => {
         try {
             const savedIdentityJSON = localStorage.getItem(IDENTITY_KEY);
             if (savedIdentityJSON) {
                 setVisualIdentity(JSON.parse(savedIdentityJSON));
             }
+            const savedConceptJSON = localStorage.getItem(EDITORIAL_CONCEPT_KEY);
+            if (savedConceptJSON) {
+                setEditorialConcept(JSON.parse(savedConceptJSON));
+            }
         } catch (error) {
-            console.error("Falha ao carregar identidade visual:", error);
+            console.error("Falha ao carregar identidade visual ou conceito:", error);
         }
     }, []);
 
@@ -162,7 +167,7 @@ const App: React.FC = () => {
         
         try {
             addLoadingMessage(isDeepMode ? 'Acessando arquivos secretos da Warp Zone...' : 'Consultando os anais dos games...');
-            const structure = await geminiService.generateMagazineStructure(topic, isDeepMode, visualIdentity?.magazineName);
+            const structure = await geminiService.generateMagazineStructure(topic, isDeepMode, visualIdentity, editorialConcept);
             
             setMagazineStructure(structure);
             setInitialStructure(structure);
@@ -449,7 +454,7 @@ const App: React.FC = () => {
         setGeneratedLogo(null);
         setIsGeneratingLogo(false);
         setLogoError(null);
-        setEditorialConcept(null);
+        // Do NOT clear editorialConcept or visualIdentity here
         setTextEditHistory({});
         setLastEditedPath(null);
         setView('hub');
@@ -833,7 +838,7 @@ const App: React.FC = () => {
         setFinalMagazineDraft(prev => ({ ...prev, identity: newIdentity }));
         try {
             localStorage.setItem(IDENTITY_KEY, JSON.stringify(newIdentity));
-            alert("Identidade visual armazenada para a revisão final!");
+            alert("Identidade visual salva! Será usada nas próximas edições.");
         } catch (error) {
             console.error("Falha ao salvar identidade visual:", error);
             setLogoError("Não foi possível salvar a identidade visual. O armazenamento pode estar cheio.");
@@ -865,9 +870,23 @@ const App: React.FC = () => {
     const handleConfirmEditorialConcept = (concept: EditorialConceptData) => {
         setEditorialConcept(concept);
         setFinalMagazineDraft(prev => ({ ...prev, editorialConcept: concept }));
-        alert("Conceito editorial armazenado para a revisão final!");
+        try {
+            localStorage.setItem(EDITORIAL_CONCEPT_KEY, JSON.stringify(concept));
+            alert("Conceito editorial salvo! Será usado nas próximas edições.");
+        } catch (error) {
+            console.error("Falha ao salvar conceito editorial:", error);
+        }
         handleBackToHub();
     };
+
+    const handleClearIdentityAndConcept = () => {
+        setVisualIdentity(null);
+        setEditorialConcept(null);
+        localStorage.removeItem(IDENTITY_KEY);
+        localStorage.removeItem(EDITORIAL_CONCEPT_KEY);
+        alert("Identidade e conceito editorial foram removidos. Você está começando do zero!");
+    };
+
 
     const renderContent = () => {
         if (error && !isLoading && !isGeneratingAll) {
@@ -942,6 +961,9 @@ const App: React.FC = () => {
                     onGoToLogoGenerator={handleGoToLogoGenerator}
                     onGoToFinalReview={() => setView('finalReview')}
                     hasDraftContent={Object.keys(finalMagazineDraft).length > 0}
+                    visualIdentity={visualIdentity}
+                    editorialConcept={editorialConcept}
+                    onClearIdentityAndConcept={handleClearIdentityAndConcept}
                 />;
         }
     };

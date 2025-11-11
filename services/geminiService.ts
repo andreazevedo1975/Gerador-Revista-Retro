@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { MagazineStructure, ImageType, EditorialConceptInputs, EditorialConceptData } from '../types';
+import { MagazineStructure, ImageType, EditorialConceptInputs, EditorialConceptData, VisualIdentity } from '../types';
 
 // Helper function for delays
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -111,17 +111,37 @@ const structureSchema = {
     required: ["title", "coverImagePrompt", "articles", "gameOfTheWeek"],
 };
 
-export async function generateMagazineStructure(idea: string, isDeepMode: boolean, magazineName?: string): Promise<MagazineStructure> {
+export async function generateMagazineStructure(
+    idea: string,
+    isDeepMode: boolean,
+    identity?: VisualIdentity | null,
+    concept?: EditorialConceptData | null
+): Promise<MagazineStructure> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = isDeepMode ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-    const magazineNameToUse = magazineName || "Retrô Gamer AI";
+    const magazineNameToUse = identity?.magazineName || "Retrô Gamer AI";
 
     let prompt = `
         Você é um editor de uma revista de videogames retrô dos anos 90 chamada "${magazineNameToUse}".
         Crie a estrutura para uma nova edição da revista com base na seguinte pauta: "${idea}".
         A revista deve ter um tom divertido, informativo e nostálgico.
+    `;
+    
+    if (concept) {
+        prompt += `
+        \nIMPORTANTE: Adira estritamente ao seguinte Conceito Editorial pré-definido para esta revista:
+        - Foco Editorial: ${concept.technicalSheet.editorialFocus}
+        - Público-Alvo: ${concept.technicalSheet.keyAudience}
+        - Estilo/Formato: ${concept.technicalSheet.referenceFormat}
+        - Conceito da Capa: A capa deve refletir esta ideia: '${concept.coverConcept.description}'. A manchete deve ter um tom semelhante a '${concept.coverConcept.headline}'.
+        - Vibe do Layout Interno: Os artigos devem parecer com isto: '${concept.internalLayout.description}'.
 
-        A estrutura deve conter:
+        Todo o conteúdo gerado, títulos e prompts devem estar alinhados com este conceito estabelecido.
+        `;
+    }
+
+    prompt += `
+        \nA estrutura deve conter:
         1.  Um título de capa.
         2.  Um prompt de imagem de capa em inglês, extremamente detalhado e evocativo no estilo 'vibrant 16-bit pixel art' ou '90s Japanese box art'.
         3.  Uma seção de destaque "Jogo da Semana". Escolha um jogo icônico relacionado ao tema principal. Forneça um título para a seção, uma descrição curta e empolgante, e um prompt de imagem em inglês para uma arte espetacular do jogo.
@@ -143,6 +163,7 @@ export async function generateMagazineStructure(idea: string, isDeepMode: boolea
         
         O resultado deve ser um objeto JSON bem formatado.
     `;
+
 
     if (isDeepMode) {
         prompt += `\nMODO PROFUNDO ATIVADO: A pauta deve ser abordada com profundidade máxima, oferecendo insights únicos e uma análise crítica e detalhada. O nível de escrita deve ser profissional e aprofundado, e os prompts gerados devem refletir essa complexidade.`;
