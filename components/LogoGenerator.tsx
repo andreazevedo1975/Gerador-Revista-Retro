@@ -20,6 +20,26 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' 
     </svg>
 );
 
+const ErrorDisplay: React.FC<{ message: string | null }> = ({ message }) => {
+    if (!message) return null;
+
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = message.split(urlRegex);
+
+    return (
+        <div className="text-red-400 text-center bg-red-900/50 p-3 rounded-md">
+            <p>
+                {parts.map((part, i) => {
+                    if (part.match(urlRegex)) {
+                        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">{part}</a>;
+                    }
+                    return part;
+                })}
+            </p>
+        </div>
+    );
+};
+
 const LogoGenerator: React.FC<LogoGeneratorProps> = ({ onGenerate, isLoading, generatedLogo, error, onConfirm, initialMagazineName }) => {
     const [prompt, setPrompt] = useState("Um logo em pixel art 16-bits para uma revista chamada 'Retrô Gamer AI', com um controle de videogame e cores neon vibrantes.");
     const [magazineName, setMagazineName] = useState(initialMagazineName || "Retrô Gamer AI");
@@ -102,7 +122,7 @@ const LogoGenerator: React.FC<LogoGeneratorProps> = ({ onGenerate, isLoading, ge
                     </div>
                 )}
 
-                {error && <p className="text-red-400 text-center bg-red-900/50 p-3 rounded-md">{error}</p>}
+                <ErrorDisplay message={error} />
 
                 <form onSubmit={handleSubmit} className="w-full space-y-6">
                     <textarea

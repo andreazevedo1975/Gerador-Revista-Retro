@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Magazine, Article, ArticleImage, FinalMagazineDraft } from '../types';
 import EditableText from './EditableText';
@@ -198,11 +199,20 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
 
         const observer = new IntersectionObserver(
             (entries) => {
-                const visibleEntry = entries.find(entry => entry.isIntersecting);
-                if (visibleEntry) {
+                // Filter for entries that are currently intersecting
+                const intersectingEntries = entries.filter(e => e.isIntersecting);
+
+                if (intersectingEntries.length > 0) {
+                    // Sort intersecting entries by their position on the screen (top to bottom)
+                    intersectingEntries.sort((a, b) => a.boundingClientRect.y - b.boundingClientRect.y);
+                    
+                    // The first entry in the sorted list is the topmost visible article within the root margin
+                    const topEntry = intersectingEntries[0];
+
                     const index = magazine.articles.findIndex(
-                        (article) => article.id === visibleEntry.target.id
+                        (article) => article.id === topEntry.target.id
                     );
+                    
                     if (index !== -1) {
                         setCurrentArticleIndex(index);
                     }
@@ -459,7 +469,7 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
             const markdownToHtml = (markdown: string): string => {
                 const lines = markdown.split('\n');
                 let html = '';
-                const listStack: ('ul' | 'ol')[] = [];
+                let listStack: ('ul' | 'ol')[] = [];
     
                 const closeLists = (targetLevel = 0) => {
                     while (listStack.length > targetLevel) {
@@ -927,9 +937,19 @@ const MagazineViewer: React.FC<MagazineViewerProps> = ({ draft, onTextUpdate, on
                                                 Leitura
                                             </button>
                                             <button
+                                                onClick={() => handleDownloadSection(article.content, article.title, 'Conteúdo Principal')}
+                                                className="bg-blue-600 text-white font-bold py-2 px-4 hover:bg-blue-700 transition-colors duration-300 shadow-lg font-display text-xs flex items-center gap-2"
+                                                title="Baixar apenas o texto do artigo em HTML"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                </svg>
+                                                <span>Texto</span>
+                                            </button>
+                                            <button
                                                 onClick={() => handleDownloadArticle(article)}
                                                 className="bg-purple-600 text-white font-bold py-2 px-4 hover:bg-purple-700 transition-colors duration-300 shadow-lg font-display text-xs flex items-center gap-2"
-                                                title="Baixar este artigo em HTML"
+                                                title="Baixar este artigo completo em HTML"
                                             >
                                                 <DownloadIcon className="w-4 h-4" />
                                                 <span>Salvar</span>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Magazine, MagazineStructure, GenerationState, ArticleImage, MagazineHistoryEntry, ArticleImagePrompt, TextEditHistory } from '../types';
 import HistoryPanel from './HistoryPanel';
 import EditableText from './EditableText';
@@ -47,6 +47,18 @@ const UndoIcon: React.FC<{className?: string}> = ({ className }) => (
 const RedoIcon: React.FC<{className?: string}> = ({ className }) => (
      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
+    </svg>
+);
+
+const ChevronUpIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+    </svg>
+);
+
+const ChevronDownIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
     </svg>
 );
 
@@ -220,6 +232,47 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     
     const [qualitySelection, setQualitySelection] = useState<{ index: number; contentPrompt: string; tipsPrompt: string; imagePrompts: ArticleImagePrompt[] } | null>(null);
 
+    // Navigation State
+    const [currentArticleIndex, setCurrentArticleIndex] = useState(0);
+    const [isNavOpen, setIsNavOpen] = useState(false);
+    const articleRefs = useRef<(HTMLElement | null)[]>([]);
+    const navFooterRef = useRef<HTMLElement>(null);
+
+     // Close nav pop-up on click outside
+    useEffect(() => {
+        if (!isNavOpen) return;
+        const handleClickOutside = (event: MouseEvent) => {
+            if (navFooterRef.current && !navFooterRef.current.contains(event.target as Node)) {
+                setIsNavOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isNavOpen]);
+
+    // IntersectionObserver for scrollspy
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const intersectingEntries = entries.filter(e => e.isIntersecting);
+                if (intersectingEntries.length > 0) {
+                    intersectingEntries.sort((a, b) => a.boundingClientRect.y - b.boundingClientRect.y);
+                    const topEntry = intersectingEntries[0];
+                    const index = structure.articles.findIndex((_, i) => `article-${i}` === topEntry.target.id);
+                    if (index !== -1) {
+                        setCurrentArticleIndex(index);
+                    }
+                }
+            },
+            { root: null, rootMargin: '0px 0px -50% 0px', threshold: 0 }
+        );
+
+        const currentArticleRefs = articleRefs.current;
+        currentArticleRefs.forEach(ref => ref && observer.observe(ref));
+
+        return () => currentArticleRefs.forEach(ref => ref && observer.unobserve(ref));
+    }, [structure.articles]);
+
     useEffect(() => {
         try {
             if (expandedArticleIndex !== null) {
@@ -244,6 +297,17 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
         const { index, contentPrompt, tipsPrompt, imagePrompts } = qualitySelection;
         onGenerateArticle(index, contentPrompt, tipsPrompt, imagePrompts, quality);
         setQualitySelection(null);
+    };
+
+     // Navigation functions
+    const scrollToArticle = (index: number) => {
+        articleRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const handlePrevArticle = () => {
+        if (currentArticleIndex > 0) scrollToArticle(currentArticleIndex - 1);
+    };
+    const handleNextArticle = () => {
+        if (currentArticleIndex < structure.articles.length - 1) scrollToArticle(currentArticleIndex + 1);
     };
 
     const UndoRedoButtons: React.FC<{ path: string }> = ({ path }) => {
@@ -278,7 +342,7 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
     };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="max-w-4xl mx-auto">
              {isHistoryPanelOpen && (
                 <HistoryPanel
                     history={history}
@@ -311,301 +375,363 @@ const MagazineComposer: React.FC<MagazineComposerProps> = ({
                     </div>
                 </div>
             )}
-            <header className="text-center">
-                <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Compositor da Revista</h2>
-                <p className="text-lg text-gray-400 leading-relaxed">Gere cada seção da sua revista. Você pode editar os prompts antes de gerar. Quando tudo estiver pronto, clique em "OK".</p>
-                <div className="flex items-center justify-center gap-2 mt-4">
-                     <EditableText
-                        tag="h3"
-                        text={magazine.title}
-                        onSave={(newText) => onTextUpdate('title', newText)}
-                        className="text-2xl font-display text-cyan-300 break-words"
-                    />
-                    <UndoRedoButtons path="title" />
-                </div>
-            </header>
-
-            <div className="flex justify-center items-center gap-2 flex-wrap p-4 bg-gray-800/50 rounded-lg">
-                 <button
-                    onClick={onSaveToHistory}
-                    className="bg-blue-600 text-white font-bold py-3 px-6 hover:bg-blue-700 transition-colors duration-300 shadow-lg font-display text-sm"
-                >
-                    Salvar Versão
-                </button>
-                 <button
-                    onClick={onToggleHistoryPanel}
-                    className="bg-gray-700 text-white font-bold py-3 px-6 hover:bg-gray-600 transition-colors duration-300 shadow-lg font-display text-sm"
-                >
-                    Histórico ({history.length})
-                </button>
-                <button
-                    onClick={onGenerateAll}
-                    disabled={isGeneratingAnything || isAllDone}
-                    className="bg-fuchsia-600 text-white font-bold py-3 px-6 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
-                >
-                    Gerar Tudo
-                </button>
-                 <button
-                    onClick={onGoToFinalReview}
-                    disabled={!isAllDone}
-                    className="bg-green-600 text-white font-bold py-3 px-6 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
-                >
-                    OK &amp; Revisão Final
-                </button>
-            </div>
-
-            <div className="space-y-6">
-                 {/* Game of the Week Section */}
-                 <section className="bg-gray-800 p-6 rounded-lg shadow-lg border-2 border-dashed border-yellow-400/50">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h4 className="text-2xl font-display text-yellow-300">Destaque: Jogo da Semana</h4>
-                             <div className="flex items-center gap-2 mt-1">
-                                <EditableText
-                                    tag="p"
-                                    text={magazine.gameOfTheWeek.title}
-                                    onSave={(newText) => onTextUpdate('gameOfTheWeek.title', newText)}
-                                    className="text-lg text-yellow-100 font-bold"
-                                />
-                                <UndoRedoButtons path="gameOfTheWeek.title" />
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <StatusIndicator status={generationStatus.gameOfTheWeek} />
-                            <GenerateButton status={generationStatus.gameOfTheWeek} onClick={() => onGenerateGameOfTheWeekImage(magazine.gameOfTheWeek.imagePrompt)} text="Gerar Imagem" />
-                        </div>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 gap-6 items-start">
-                        <div className="space-y-4">
-                            <div>
-                                <h5 className="font-bold text-cyan-300 mb-1">Descrição</h5>
-                                 <div className="flex items-start gap-2">
-                                    <EditableText
-                                        tag="div"
-                                        text={magazine.gameOfTheWeek.description}
-                                        onSave={(newText) => onTextUpdate('gameOfTheWeek.description', newText)}
-                                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
-                                        isTextArea
-                                    />
-                                    <UndoRedoButtons path="gameOfTheWeek.description" />
-                                </div>
-                            </div>
-                             <div>
-                                <h5 className="font-bold text-cyan-300 mb-1">Prompt da Imagem</h5>
-                                <div className="flex items-start gap-2">
-                                    <EditableText
-                                        tag="div"
-                                        text={magazine.gameOfTheWeek.imagePrompt}
-                                        onSave={(newText) => onPromptUpdate('gameOfTheWeek.imagePrompt', newText)}
-                                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
-                                        isTextArea
-                                    />
-                                    <UndoRedoButtons path="gameOfTheWeek.imagePrompt" />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex justify-center items-center bg-gray-900/50 min-h-[200px] rounded h-full">
-                            {generationStatus.gameOfTheWeek === 'generating' && <Spinner />}
-                            {magazine.gameOfTheWeek.imageUrl && <img src={magazine.gameOfTheWeek.imageUrl} alt="Imagem do Jogo da Semana" className="max-h-60 w-full object-cover rounded" />}
-                            {generationStatus.gameOfTheWeek === 'pending' && <p className="text-gray-500">Aguardando geração...</p>}
-                            {generationStatus.gameOfTheWeek === 'error' && <p className="text-red-400">Falha ao gerar imagem.</p>}
-                        </div>
-                    </div>
-                </section>
-
-
-                {/* Cover Section */}
-                <section className="bg-gray-800 p-6 rounded-lg shadow-lg border border-fuchsia-500/20">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <div className="flex items-center gap-4">
-                                <h4 className="text-2xl font-display text-cyan-400">Capa</h4>
-                                <button
-                                    onClick={onResetCoverPrompt}
-                                    className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-gray-700"
-                                    title="Resetar prompt para o original"
-                                >
-                                    <ResetIcon className="w-4 h-4" />
-                                    <span>Resetar Prompt</span>
-                                </button>
-                            </div>
-                            <p className="text-sm text-gray-400 mt-1">Edite o prompt para refinar a arte da capa.</p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <StatusIndicator status={generationStatus.cover} />
-                            <GenerateButton status={generationStatus.cover} onClick={() => onGenerateCover(structure.coverImagePrompt)} text="Gerar Capa" />
-                        </div>
-                    </div>
-                    <div className="flex items-start gap-2 mb-4">
-                        <EditableText
-                            tag="div"
-                            text={structure.coverImagePrompt}
-                            onSave={(newText) => onPromptUpdate('coverImagePrompt', newText)}
-                            className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
-                            isTextArea
+            <div className="space-y-8">
+                <header className="text-center">
+                    <h2 className="text-3xl md:text-4xl font-display text-yellow-300 mb-2">Compositor da Revista</h2>
+                    <p className="text-lg text-gray-400 leading-relaxed">Gere cada seção da sua revista. Você pode editar os prompts antes de gerar. Quando tudo estiver pronto, clique em "OK".</p>
+                    <div className="flex items-center justify-center gap-2 mt-4">
+                         <EditableText
+                            tag="h3"
+                            text={magazine.title}
+                            onSave={(newText) => onTextUpdate('title', newText)}
+                            className="text-2xl font-display text-cyan-300 break-words"
                         />
-                        <UndoRedoButtons path="coverImagePrompt" />
+                        <UndoRedoButtons path="title" />
                     </div>
-                     <div className="flex justify-center items-center bg-gray-900/50 min-h-[320px] rounded">
-                        {generationStatus.cover === 'generating' && <Spinner />}
-                        {magazine.coverImage && <img src={magazine.coverImage} alt="Capa gerada" className="max-h-80 object-contain rounded" />}
-                        {generationStatus.cover === 'pending' && <p className="text-gray-500">Aguardando geração da capa...</p>}
-                        {generationStatus.cover === 'error' && <p className="text-red-400">Falha ao gerar a capa.</p>}
-                    </div>
-                </section>
+                </header>
 
-                {/* Articles Section */}
-                {structure.articles.map((article, index) => {
-                    const articleId = `article-${index}`;
-                    const articleStatus = generationStatus[articleId];
-                    const generatedArticle = magazine.articles[index];
-                    const isExpanded = expandedArticleIndex === index;
+                <div className="flex justify-center items-center gap-2 flex-wrap p-4 bg-gray-800/50 rounded-lg">
+                     <button
+                        onClick={onSaveToHistory}
+                        className="bg-blue-600 text-white font-bold py-3 px-6 hover:bg-blue-700 transition-colors duration-300 shadow-lg font-display text-sm"
+                    >
+                        Salvar Versão
+                    </button>
+                     <button
+                        onClick={onToggleHistoryPanel}
+                        className="bg-gray-700 text-white font-bold py-3 px-6 hover:bg-gray-600 transition-colors duration-300 shadow-lg font-display text-sm"
+                    >
+                        Histórico ({history.length})
+                    </button>
+                    <button
+                        onClick={onGenerateAll}
+                        disabled={isGeneratingAnything || isAllDone}
+                        className="bg-fuchsia-600 text-white font-bold py-3 px-6 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
+                    >
+                        Gerar Tudo
+                    </button>
+                     <button
+                        onClick={onGoToFinalReview}
+                        disabled={!isAllDone}
+                        className="bg-green-600 text-white font-bold py-3 px-6 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
+                    >
+                        OK &amp; Revisão Final
+                    </button>
+                </div>
 
-                    return (
-                        <section key={articleId} className="bg-gray-800 p-6 rounded-lg shadow-lg border border-cyan-500/20">
-                             <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <h4 className="text-2xl font-display text-cyan-400">
-                                        <span className="font-sans font-bold text-gray-500">{index + 1}.</span> {article.title}
-                                    </h4>
-                                     <p className="text-sm text-gray-400">3 Imagens | Conteúdo | Dicas</p>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <StatusIndicator status={articleStatus} />
-                                    <button
-                                        onClick={() => handleTogglePreview(index)}
-                                        className="text-cyan-300 hover:text-yellow-300 transition-colors font-display text-sm flex items-center gap-1 p-2 rounded-md hover:bg-cyan-500/10"
-                                        title={isExpanded ? 'Ocultar detalhes' : 'Mostrar detalhes e prompts'}
-                                    >
-                                        <span>{isExpanded ? 'Ocultar' : 'Detalhes'}</span>
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                        </svg>
-                                    </button>
-                                    <GenerateButton status={articleStatus} onClick={() => setQualitySelection({ index, contentPrompt: article.contentPrompt, tipsPrompt: article.tipsPrompt, imagePrompts: article.imagePrompts })} text="Gerar Artigo" />
+                <div className="space-y-6">
+                     {/* Game of the Week Section */}
+                     <section className="bg-gray-800 p-6 rounded-lg shadow-lg border-2 border-dashed border-yellow-400/50">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 className="text-2xl font-display text-yellow-300">Destaque: Jogo da Semana</h4>
+                                 <div className="flex items-center gap-2 mt-1">
+                                    <EditableText
+                                        tag="p"
+                                        text={magazine.gameOfTheWeek.title}
+                                        onSave={(newText) => onTextUpdate('gameOfTheWeek.title', newText)}
+                                        className="text-lg text-yellow-100 font-bold"
+                                    />
+                                    <UndoRedoButtons path="gameOfTheWeek.title" />
                                 </div>
                             </div>
+                            <div className="flex items-center gap-4">
+                                <StatusIndicator status={generationStatus.gameOfTheWeek} />
+                                <GenerateButton status={generationStatus.gameOfTheWeek} onClick={() => onGenerateGameOfTheWeekImage(magazine.gameOfTheWeek.imagePrompt)} text="Gerar Imagem" />
+                            </div>
+                        </div>
 
-                            {isExpanded && (
-                                <div className="mt-4 pt-4 border-t border-cyan-500/20 animate-slide-down-fade-in">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h5 className="font-display text-xl text-yellow-300">
-                                            Prompts de Geração
-                                        </h5>
+                        <div className="grid md:grid-cols-2 gap-6 items-start">
+                            <div className="space-y-4">
+                                <div>
+                                    <h5 className="font-bold text-cyan-300 mb-1">Descrição</h5>
+                                     <div className="flex items-start gap-2">
+                                        <EditableText
+                                            tag="div"
+                                            text={magazine.gameOfTheWeek.description}
+                                            onSave={(newText) => onTextUpdate('gameOfTheWeek.description', newText)}
+                                            className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                            isTextArea
+                                        />
+                                        <UndoRedoButtons path="gameOfTheWeek.description" />
+                                    </div>
+                                </div>
+                                 <div>
+                                    <h5 className="font-bold text-cyan-300 mb-1">Prompt da Imagem</h5>
+                                    <div className="flex items-start gap-2">
+                                        <EditableText
+                                            tag="div"
+                                            text={magazine.gameOfTheWeek.imagePrompt}
+                                            onSave={(newText) => onPromptUpdate('gameOfTheWeek.imagePrompt', newText)}
+                                            className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                            isTextArea
+                                        />
+                                        <UndoRedoButtons path="gameOfTheWeek.imagePrompt" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-center items-center bg-gray-900/50 min-h-[200px] rounded h-full">
+                                {generationStatus.gameOfTheWeek === 'generating' && <Spinner />}
+                                {magazine.gameOfTheWeek.imageUrl && <img src={magazine.gameOfTheWeek.imageUrl} alt="Imagem do Jogo da Semana" className="max-h-60 w-full object-cover rounded" />}
+                                {generationStatus.gameOfTheWeek === 'pending' && <p className="text-gray-500">Aguardando geração...</p>}
+                                {generationStatus.gameOfTheWeek === 'error' && <p className="text-red-400">Falha ao gerar imagem.</p>}
+                            </div>
+                        </div>
+                    </section>
+
+
+                    {/* Cover Section */}
+                    <section className="bg-gray-800 p-6 rounded-lg shadow-lg border border-fuchsia-500/20">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <div className="flex items-center gap-4">
+                                    <h4 className="text-2xl font-display text-cyan-400">Capa</h4>
+                                    <button
+                                        onClick={onResetCoverPrompt}
+                                        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-gray-700"
+                                        title="Resetar prompt para o original"
+                                    >
+                                        <ResetIcon className="w-4 h-4" />
+                                        <span>Resetar Prompt</span>
+                                    </button>
+                                </div>
+                                <p className="text-sm text-gray-400 mt-1">Edite o prompt para refinar a arte da capa.</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <StatusIndicator status={generationStatus.cover} />
+                                <GenerateButton status={generationStatus.cover} onClick={() => onGenerateCover(structure.coverImagePrompt)} text="Gerar Capa" />
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-2 mb-4">
+                            <EditableText
+                                tag="div"
+                                text={structure.coverImagePrompt}
+                                onSave={(newText) => onPromptUpdate('coverImagePrompt', newText)}
+                                className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                isTextArea
+                            />
+                            <UndoRedoButtons path="coverImagePrompt" />
+                        </div>
+                         <div className="flex justify-center items-center bg-gray-900/50 min-h-[320px] rounded">
+                            {generationStatus.cover === 'generating' && <Spinner />}
+                            {magazine.coverImage && <img src={magazine.coverImage} alt="Capa gerada" className="max-h-80 object-contain rounded" />}
+                            {generationStatus.cover === 'pending' && <p className="text-gray-500">Aguardando geração da capa...</p>}
+                            {generationStatus.cover === 'error' && <p className="text-red-400">Falha ao gerar a capa.</p>}
+                        </div>
+                    </section>
+
+                    {/* Articles Section */}
+                    {structure.articles.map((article, index) => {
+                        const articleId = `article-${index}`;
+                        const articleStatus = generationStatus[articleId];
+                        const generatedArticle = magazine.articles[index];
+                        const isExpanded = expandedArticleIndex === index;
+
+                        return (
+                            <section 
+                                key={articleId} 
+                                id={articleId}
+                                ref={el => articleRefs.current[index] = el}
+                                className="bg-gray-800 p-6 rounded-lg shadow-lg border border-cyan-500/20"
+                            >
+                                 <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h4 className="text-2xl font-display text-cyan-400">
+                                            <span className="font-sans font-bold text-gray-500">{index + 1}.</span> {article.title}
+                                        </h4>
+                                         <p className="text-sm text-gray-400">3 Imagens | Conteúdo | Dicas</p>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <StatusIndicator status={articleStatus} />
                                         <button
-                                            onClick={() => onResetArticlePrompts(index)}
-                                            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-gray-700"
-                                            title="Resetar prompts para o original"
+                                            onClick={() => handleTogglePreview(index)}
+                                            className="text-cyan-300 hover:text-yellow-300 transition-colors font-display text-sm flex items-center gap-1 p-2 rounded-md hover:bg-cyan-500/10"
+                                            title={isExpanded ? 'Ocultar detalhes' : 'Mostrar detalhes e prompts'}
                                         >
-                                            <ResetIcon className="w-4 h-4" />
-                                            <span>Resetar Prompts</span>
+                                            <span>{isExpanded ? 'Ocultar' : 'Detalhes'}</span>
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                            </svg>
                                         </button>
+                                        <GenerateButton status={articleStatus} onClick={() => setQualitySelection({ index, contentPrompt: article.contentPrompt, tipsPrompt: article.tipsPrompt, imagePrompts: article.imagePrompts })} text="Gerar Artigo" />
                                     </div>
+                                </div>
 
-                                    {/* PROMPTS SECTION */}
-                                    <div className="space-y-4 mb-6">
-                                        <div>
-                                            <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt do Conteúdo</h6>
-                                            <div className="flex items-start gap-2">
-                                                <EditableText
-                                                    tag="div"
-                                                    text={article.contentPrompt}
-                                                    onSave={(newText) => onPromptUpdate(`articles.${index}.contentPrompt`, newText)}
-                                                    className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
-                                                    isTextArea
-                                                />
-                                                <UndoRedoButtons path={`articles.${index}.contentPrompt`} />
-                                            </div>
+                                {isExpanded && (
+                                    <div className="mt-4 pt-4 border-t border-cyan-500/20 animate-slide-down-fade-in">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h5 className="font-display text-xl text-yellow-300">
+                                                Prompts de Geração
+                                            </h5>
+                                            <button
+                                                onClick={() => onResetArticlePrompts(index)}
+                                                className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-gray-700"
+                                                title="Resetar prompts para o original"
+                                            >
+                                                <ResetIcon className="w-4 h-4" />
+                                                <span>Resetar Prompts</span>
+                                            </button>
                                         </div>
-                                        <div>
-                                            <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt de Dicas</h6>
-                                             <div className="flex items-start gap-2">
-                                                <EditableText
-                                                    tag="div"
-                                                    text={article.tipsPrompt}
-                                                    onSave={(newText) => onPromptUpdate(`articles.${index}.tipsPrompt`, newText)}
-                                                    className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
-                                                    isTextArea
-                                                />
-                                                <UndoRedoButtons path={`articles.${index}.tipsPrompt`} />
-                                            </div>
-                                            {index === 0 && (
-                                                <div className="mt-2 flex justify-end">
-                                                    <button
-                                                        onClick={() => onGenerateArticleTips(index)}
-                                                        disabled={isGeneratingTips?.[articleId] || articleStatus === 'generating'}
-                                                        className="bg-purple-600 text-white font-bold py-2 px-4 rounded-md hover:bg-purple-700 disabled:bg-gray-600 transition-colors font-display text-xs flex items-center gap-2"
-                                                    >
-                                                        {isGeneratingTips?.[articleId] ? (
-                                                            <>
-                                                                <div className="w-4 h-4 border-2 border-t-2 border-t-white border-gray-600/50 rounded-full animate-spin"></div>
-                                                                <span>Gerando...</span>
-                                                            </>
-                                                        ) : (
-                                                        "Gerar Apenas Dicas com IA"
-                                                        )}
-                                                    </button>
+
+                                        {/* PROMPTS SECTION */}
+                                        <div className="space-y-4 mb-6">
+                                            <div>
+                                                <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt do Conteúdo</h6>
+                                                <div className="flex items-start gap-2">
+                                                    <EditableText
+                                                        tag="div"
+                                                        text={article.contentPrompt}
+                                                        onSave={(newText) => onPromptUpdate(`articles.${index}.contentPrompt`, newText)}
+                                                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                                        isTextArea
+                                                    />
+                                                    <UndoRedoButtons path={`articles.${index}.contentPrompt`} />
                                                 </div>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <h6 className="font-display text-lg text-cyan-400 mb-2">Prompts de Imagem</h6>
-                                            <div className="space-y-3">
-                                                {article.imagePrompts.map((imgPrompt, imgIndex) => (
-                                                    <div key={imgIndex}>
-                                                        <label className="text-xs font-bold text-cyan-400 uppercase">{imgPrompt.type}</label>
-                                                        <div className="flex items-start gap-2">
-                                                            <EditableText
-                                                                tag="div"
-                                                                text={imgPrompt.prompt}
-                                                                onSave={(newText) => onPromptUpdate(`articles.${index}.imagePrompts.${imgIndex}.prompt`, newText)}
-                                                                className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
-                                                                isTextArea
-                                                            />
-                                                            <UndoRedoButtons path={`articles.${index}.imagePrompts.${imgIndex}.prompt`} />
-                                                        </div>
-                                                    </div>
-                                                ))}
                                             </div>
-                                        </div>
-                                    </div>
-
-                                    {/* PREVIEW SECTION (only if done) */}
-                                    {articleStatus === 'done' && (
-                                        <div>
-                                            <h5 className="font-display text-xl text-yellow-300 mb-4">Pré-visualização do Artigo</h5>
-                                            <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-                                                <ImageGalleryPreview images={generatedArticle.images} />
-                                                <div className="space-y-6">
-                                                    <div>
-                                                        <h6 className="font-display text-lg text-cyan-400 mb-2">Conteúdo do Artigo</h6>
-                                                        <div className="bg-gray-800 p-4 rounded-md max-h-60 overflow-y-auto border border-gray-600">
-                                                            {renderMarkdown(generatedArticle.content || 'Nenhum conteúdo gerado.')}
-                                                        </div>
+                                            <div>
+                                                <h6 className="font-display text-lg text-cyan-400 mb-2">Prompt de Dicas</h6>
+                                                 <div className="flex items-start gap-2">
+                                                    <EditableText
+                                                        tag="div"
+                                                        text={article.tipsPrompt}
+                                                        onSave={(newText) => onPromptUpdate(`articles.${index}.tipsPrompt`, newText)}
+                                                        className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                                        isTextArea
+                                                    />
+                                                    <UndoRedoButtons path={`articles.${index}.tipsPrompt`} />
+                                                </div>
+                                                {index === 0 && (
+                                                    <div className="mt-2 flex justify-end">
+                                                        <button
+                                                            onClick={() => onGenerateArticleTips(index)}
+                                                            disabled={isGeneratingTips?.[articleId] || articleStatus === 'generating'}
+                                                            className="bg-purple-600 text-white font-bold py-2 px-4 rounded-md hover:bg-purple-700 disabled:bg-gray-600 transition-colors font-display text-xs flex items-center gap-2"
+                                                        >
+                                                            {isGeneratingTips?.[articleId] ? (
+                                                                <>
+                                                                    <div className="w-4 h-4 border-2 border-t-2 border-t-white border-gray-600/50 rounded-full animate-spin"></div>
+                                                                    <span>Gerando...</span>
+                                                                </>
+                                                            ) : (
+                                                            "Gerar Apenas Dicas com IA"
+                                                            )}
+                                                        </button>
                                                     </div>
-                                                    <div className="mt-4 p-4 border-2 border-dashed border-yellow-400/50 bg-black/20 rounded-lg">
-                                                        <h6 className="font-display text-lg text-yellow-300 mb-2">Dicas e Macetes</h6>
-                                                        <div className="max-h-60 overflow-y-auto">
-                                                            {renderMarkdown(generatedArticle.tips || 'Nenhuma dica gerada.')}
+                                                )}
+                                            </div>
+                                            <div>
+                                                <h6 className="font-display text-lg text-cyan-400 mb-2">Prompts de Imagem</h6>
+                                                <div className="space-y-3">
+                                                    {article.imagePrompts.map((imgPrompt, imgIndex) => (
+                                                        <div key={imgIndex}>
+                                                            <label className="text-xs font-bold text-cyan-400 uppercase">{imgPrompt.type}</label>
+                                                            <div className="flex items-start gap-2">
+                                                                <EditableText
+                                                                    tag="div"
+                                                                    text={imgPrompt.prompt}
+                                                                    onSave={(newText) => onPromptUpdate(`articles.${index}.imagePrompts.${imgIndex}.prompt`, newText)}
+                                                                    className="text-base text-gray-300 bg-gray-900/50 p-3 rounded-md border border-gray-700 w-full"
+                                                                    isTextArea
+                                                                />
+                                                                <UndoRedoButtons path={`articles.${index}.imagePrompts.${imgIndex}.prompt`} />
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    ))}
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
-                                </div>
-                            )}
 
-                            {articleStatus === 'generating' && (
-                                <div className="flex justify-center items-center min-h-[120px]">
-                                    <Spinner />
-                                </div>
-                            )}
-                        </section>
-                    );
-                })}
+                                        {/* PREVIEW SECTION (only if done) */}
+                                        {articleStatus === 'done' && (
+                                            <div>
+                                                <h5 className="font-display text-xl text-yellow-300 mb-4">Pré-visualização do Artigo</h5>
+                                                <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                                                    <ImageGalleryPreview images={generatedArticle.images} />
+                                                    <div className="space-y-6">
+                                                        <div>
+                                                            <h6 className="font-display text-lg text-cyan-400 mb-2">Conteúdo do Artigo</h6>
+                                                            <div className="bg-gray-800 p-4 rounded-md max-h-60 overflow-y-auto border border-gray-600">
+                                                                {renderMarkdown(generatedArticle.content || 'Nenhum conteúdo gerado.')}
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-4 p-4 border-2 border-dashed border-yellow-400/50 bg-black/20 rounded-lg">
+                                                            <h6 className="font-display text-lg text-yellow-300 mb-2">Dicas e Macetes</h6>
+                                                            <div className="max-h-60 overflow-y-auto">
+                                                                {renderMarkdown(generatedArticle.tips || 'Nenhuma dica gerada.')}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {articleStatus === 'generating' && (
+                                    <div className="flex justify-center items-center min-h-[120px]">
+                                        <Spinner />
+                                    </div>
+                                )}
+                            </section>
+                        );
+                    })}
+                </div>
             </div>
+            
+            <footer ref={navFooterRef} className="sticky bottom-0 z-30 mt-8">
+                 {isNavOpen && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-full max-w-lg mb-2">
+                        <div className="bg-gray-800 border-2 border-fuchsia-500/50 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                            <ul className="p-2 space-y-1">
+                                {structure.articles.map((article, index) => (
+                                    <li key={`nav-article-${index}`}>
+                                        <button
+                                            onClick={() => {
+                                                scrollToArticle(index);
+                                                setIsNavOpen(false);
+                                            }}
+                                            className={`w-full text-left p-2 rounded-md font-display text-sm transition-colors duration-200 truncate ${
+                                                currentArticleIndex === index
+                                                    ? 'bg-fuchsia-600 text-white'
+                                                    : 'text-gray-300 hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            <span className="font-sans font-bold">{index + 1}.</span> {article.title}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+                <div className="bg-gray-900/80 backdrop-blur-sm border-t border-fuchsia-500/30 p-3">
+                    <div className="container mx-auto flex justify-between items-center max-w-4xl">
+                        <button
+                            onClick={handlePrevArticle}
+                            disabled={currentArticleIndex === 0}
+                            className="bg-fuchsia-600 text-white font-bold py-2 px-6 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
+                        >
+                            Anterior
+                        </button>
+                        <button
+                            onClick={() => setIsNavOpen(prev => !prev)}
+                            className="font-display text-yellow-300 text-sm text-center flex flex-col items-center gap-1 hover:bg-fuchsia-500/20 px-4 py-1 rounded-md transition-colors"
+                            title="Navegar para artigo"
+                        >
+                            {isNavOpen ? <ChevronDownIcon /> : <ChevronUpIcon />}
+                            <span>Artigo {currentArticleIndex + 1} de {structure.articles.length}</span>
+                        </button>
+                        <button
+                            onClick={handleNextArticle}
+                            disabled={currentArticleIndex === structure.articles.length - 1}
+                            className="bg-fuchsia-600 text-white font-bold py-2 px-6 hover:bg-fuchsia-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shadow-lg font-display text-sm"
+                        >
+                            Próximo
+                        </button>
+                    </div>
+                </div>
+            </footer>
+
             <style>{`
                 @keyframes slide-down-fade-in {
                     from { opacity: 0; transform: translateY(-10px); }

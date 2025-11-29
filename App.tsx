@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Magazine, MagazineStructure, GenerationState, CreationType, MagazineHistoryEntry, ImageType, ArticleImagePrompt, VisualIdentity, EditorialConceptInputs, EditorialConceptData, FinalMagazineDraft, TextEditHistory } from './types';
 import * as geminiService from './services/geminiService';
@@ -18,6 +19,20 @@ const HISTORY_KEY = 'retroGamerHistory';
 const IDENTITY_KEY = 'retroGamerIdentity';
 const EDITORIAL_CONCEPT_KEY = 'retroGamerEditorialConcept';
 const API_CALL_DELAY = 4000; // 4 seconds, to stay within ~15 requests/minute rate limit.
+
+const getFriendlyErrorMessage = (error: any): string => {
+    const errorMessage = (error?.message || error?.toString() || '').toLowerCase();
+    
+    if (errorMessage.includes('429') || errorMessage.includes('resource_exhausted') || errorMessage.includes('quota')) {
+        // Check for Imagen-specific quota messages
+        if (errorMessage.includes('imagen')) {
+             return `Você excedeu a cota de geração de imagens gratuitas do Imagen. Para continuar, por favor, verifique se a cobrança está ativada para o seu projeto do Google Cloud. Mais informações em: https://ai.google.dev/gemini-api/docs/billing`;
+        }
+        return `Sua cota de API do Gemini foi excedida ou a chave é inválida. Por favor, verifique se a cobrança está ativada para o seu projeto do Google Cloud. Para mais informações, acesse: https://ai.google.dev/gemini-api/docs/billing`;
+    }
+    
+    return error.message || "Ocorreu um erro desconhecido. Tente novamente.";
+};
 
 const App: React.FC = () => {
     const [magazine, setMagazine] = useState<Magazine | null>(null);
@@ -215,7 +230,7 @@ const App: React.FC = () => {
 
         } catch (err: any) {
             console.error(err);
-            setError(`Ocorreu um erro ao gerar a estrutura da revista para "${topic}": ${err.message}. Tente novamente.`);
+            setError(`Ocorreu um erro ao gerar a estrutura da revista: ${getFriendlyErrorMessage(err)}`);
             setView('create');
         } finally {
             setIsLoading(false);
@@ -238,7 +253,7 @@ const App: React.FC = () => {
             addLoadingMessage("✅ Capa finalizada com sucesso!");
         } catch (err: any) {
             console.error("Failed to generate cover:", err);
-            setError(`Falha ao gerar a capa: ${err.message}`);
+            setError(`Falha ao gerar a capa: ${getFriendlyErrorMessage(err)}`);
             setGenerationStatus(prev => ({ ...prev, cover: 'error' }));
             addLoadingMessage(`❌ Erro ao criar a capa.`);
         }
@@ -263,7 +278,7 @@ const App: React.FC = () => {
             addLoadingMessage("✅ Destaque finalizado com sucesso!");
         } catch (err: any) {
             console.error("Failed to generate Game of the Week image:", err);
-            setError(`Falha ao gerar a imagem de destaque: ${err.message}`);
+            setError(`Falha ao gerar a imagem de destaque: ${getFriendlyErrorMessage(err)}`);
             setGenerationStatus(prev => ({ ...prev, gameOfTheWeek: 'error' }));
             addLoadingMessage(`❌ Erro ao criar imagem de destaque.`);
         }
@@ -327,7 +342,7 @@ const App: React.FC = () => {
 
         } catch (err: any) {
             console.error(`Failed to generate article ${articleIndex}:`, err);
-            setError(`Falha ao gerar o artigo "${articleStruct.title}": ${err.message}`);
+            setError(`Falha ao gerar o artigo "${articleStruct.title}": ${getFriendlyErrorMessage(err)}`);
             setGenerationStatus(prev => ({ ...prev, [articleId]: 'error' }));
             addLoadingMessage(`❌ Erro ao gerar o artigo: "${articleStruct.title}".`);
         }
@@ -370,7 +385,7 @@ const App: React.FC = () => {
 
         } catch (err: any) {
             console.error(`Failed to generate tips for article ${articleIndex}:`, err);
-            setError(`Falha ao gerar as dicas para o artigo: ${err.message}`);
+            setError(`Falha ao gerar as dicas para o artigo: ${getFriendlyErrorMessage(err)}`);
              addLoadingMessage(`❌ Erro ao gerar dicas para o artigo ${articleIndex + 1}.`);
         } finally {
             setIsGeneratingTips(prev => ({ ...prev, [articleId]: false }));
@@ -623,6 +638,7 @@ const App: React.FC = () => {
 
         const originalArticleStructure = initialStructure.articles[articleIndex];
         
+        // FIX: Replaced 'index' with the correct parameter name 'articleIndex' in the following lines to resolve reference errors.
         handlePromptUpdate(`articles.${articleIndex}.contentPrompt`, originalArticleStructure.contentPrompt);
         handlePromptUpdate(`articles.${articleIndex}.tipsPrompt`, originalArticleStructure.tipsPrompt);
         originalArticleStructure.imagePrompts.forEach((imgPrompt, imgIndex) => {
@@ -685,7 +701,7 @@ const App: React.FC = () => {
 
         } catch (err: any) {
             console.error(err);
-            setError(`Falha ao gerar nova imagem. ${err.message}`);
+            setError(`Falha ao gerar nova imagem: ${getFriendlyErrorMessage(err)}`);
         } finally {
             setIsGeneratingImage(prev => ({ ...prev, [imageId]: false }));
         }
@@ -826,7 +842,7 @@ const App: React.FC = () => {
             setGeneratedLogo(logo);
         } catch (err: any) {
             console.error(err);
-            setLogoError(`Ocorreu um erro ao gerar o logo: ${err.message}. Tente novamente.`);
+            setLogoError(`Ocorreu um erro ao gerar o logo: ${getFriendlyErrorMessage(err)}`);
         } finally {
             setIsGeneratingLogo(false);
         }
@@ -860,7 +876,7 @@ const App: React.FC = () => {
         } catch (err: any)
         {
             console.error(err);
-            setError(`Ocorreu um erro ao gerar o conceito editorial: ${err.message}. Tente novamente.`);
+            setError(`Ocorreu um erro ao gerar o conceito editorial: ${getFriendlyErrorMessage(err)}`);
             setView('editorialConceptCreator');
         } finally {
             setIsLoading(false);
@@ -890,9 +906,18 @@ const App: React.FC = () => {
 
     const renderContent = () => {
         if (error && !isLoading && !isGeneratingAll) {
+             const urlRegex = /(https?:\/\/[^\s]+)/g;
+             const parts = error.split(urlRegex);
              return (
                 <div className="max-w-3xl mx-auto bg-red-900/50 p-4 mb-6 rounded-lg border border-red-500 text-center">
-                    <p className="text-red-300">{error}</p>
+                    <p className="text-red-300">
+                        {parts.map((part, i) => {
+                            if (part.match(urlRegex)) {
+                                return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">{part}</a>;
+                            }
+                            return part;
+                        })}
+                    </p>
                 </div>
              );
         }
