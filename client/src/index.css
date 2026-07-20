@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-pixel: "Press Start 2P", monospace;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-background: oklch(0.145 0.015 270);
+  --color-foreground: oklch(0.95 0.01 270);
+  --color-card: oklch(0.18 0.02 270);
+  --color-card-foreground: oklch(0.95 0.01 270);
+  --color-popover: oklch(0.18 0.02 270);
+  --color-popover-foreground: oklch(0.95 0.01 270);
+  --color-primary: oklch(0.72 0.2 195);
+  --color-primary-foreground: oklch(0.15 0.02 270);
+  --color-secondary: oklch(0.25 0.03 270);
+  --color-secondary-foreground: oklch(0.9 0.01 270);
+  --color-muted: oklch(0.22 0.02 270);
+  --color-muted-foreground: oklch(0.65 0.02 270);
+  --color-accent: oklch(0.65 0.25 320);
+  --color-accent-foreground: oklch(0.95 0.01 270);
+  --color-destructive: oklch(0.55 0.2 25);
+  --color-destructive-foreground: oklch(0.95 0.01 270);
+  --color-border: oklch(0.3 0.03 270);
+  --color-input: oklch(0.25 0.02 270);
+  --color-ring: oklch(0.72 0.2 195);
+  --color-chart-1: oklch(0.72 0.2 195);
+  --color-chart-2: oklch(0.65 0.25 320);
+  --color-chart-3: oklch(0.7 0.2 140);
+  --color-chart-4: oklch(0.7 0.2 60);
+  --color-chart-5: oklch(0.6 0.2 30);
+  --color-sidebar: oklch(0.16 0.015 270);
+  --color-sidebar-foreground: oklch(0.9 0.01 270);
+  --color-sidebar-primary: oklch(0.72 0.2 195);
+  --color-sidebar-primary-foreground: oklch(0.15 0.02 270);
+  --color-sidebar-accent: oklch(0.25 0.03 270);
+  --color-sidebar-accent-foreground: oklch(0.9 0.01 270);
+  --color-sidebar-border: oklch(0.3 0.03 270);
+  --color-sidebar-ring: oklch(0.72 0.2 195);
+  --radius: 0.625rem;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+  .container {
+    @apply mx-auto px-4 sm:px-6 lg:px-8;
+  }
+}
+
+@layer utilities {
+  .font-pixel {
+    font-family: var(--font-pixel);
+  }
+  .font-display {
+    font-family: var(--font-display);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(0.18 0.02 270);
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.35 0.03 270);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.45 0.03 270);
+}

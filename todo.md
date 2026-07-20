@@ -1,0 +1,30 @@
+# Project TODO
+
+- [x] Database schema: magazines, articles, article_images, editorial_concepts, visual_identities, magazine_versions
+- [x] Backend tRPC routes: magazine CRUD (create, list, get, delete)
+- [x] Backend tRPC routes: AI generation (structure, text, images, logo, editorial concept)
+- [x] Backend tRPC routes: version history (save, list, revert)
+- [x] Frontend: Home page with app presentation, login button, and user's magazine gallery
+- [x] Frontend: Creation flow with theme selection, standard mode and Deep Mode
+- [x] Frontend: Magazine Composer with control panel for generating cover, articles, images, and "Jogo da Semana"
+- [x] Frontend: Inline text/prompt editing with full Undo/Redo support and reset to original
+- [x] Frontend: Gerador de Conceito Editorial tool
+- [x] Frontend: Logo Generator with preview and save to visual identity
+- [x] Frontend: Final magazine viewer in reading mode with page navigation and retro 90s style
+- [x] Frontend: Version history panel with revert option
+- [x] Security: All Google GenAI API calls exclusively on backend
+- [x] Persistence: All data stored in database linked to authenticated user
+- [x] Fix: Add ownership checks to article/image mutations
+- [x] Fix: Add backend version.revert procedure
+- [x] Fix: Extend inline editing undo/redo to article texts in composer
+- [x] Fix: Add theme/era selection to creation flow
+- [x] Feature: Export magazine to PDF from viewer with download button
+- [x] Feature: Add pixel art custom fonts to exported PDF for retro aesthetic
+- [x] Feature: Add automatic table of contents with clickable links to PDF export
+- [x] Feature: Add pixel art decorative border around every PDF page for retro immersion
+- [x] Feature: Add page numbers in footer of each PDF page with pixel font
+- [x] Feature: Add semi-transparent watermark with magazine logo on every PDF page
+- [x] Feature: Public gallery page where magazines marked as public can be viewed without login
+- [x] Feature: Cover templates with pre-defined layouts (SuperGamePower, Ação Games, etc.)
+- [x] Feature: Likes/favorites system in public gallery with popularity ranking
+- [x] Feature: Direct link sharing with short URLs for social media

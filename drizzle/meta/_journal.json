@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1783440230472,
+      "tag": "0000_mean_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1783440980040,
+      "tag": "0001_large_luminals",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1783448041896,
+      "tag": "0002_curious_invisible_woman",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1783448494956,
+      "tag": "0003_dapper_sage",
+      "breakpoints": true
+    }
+  ]
+}
